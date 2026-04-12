@@ -26,7 +26,7 @@
             <div id="notif-list"><div style="padding:20px;text-align:center;color:var(--text-muted)">No notifications</div></div>
           </div>
         </div>
-        <div class="topbar-avatar" id="tb-avatar" onclick="window.location='/pages/account.html'">P</div>
+        <div class="topbar-avatar" id="tb-avatar" onclick="window.location='/pages/settings.html'">P</div>
       </div>
     </div>
 
@@ -183,7 +183,7 @@ if (user.profile_image) {
 }
 
 // Dashboard info
-document.getElementById('dash-username').textContent = fmt.username(user.username);
+document.getElementById('dash-username').textContent = user.full_name || fmt.username(user.username);
 document.getElementById('dash-avatar').textContent = (user.username || 'P').replace('@', '')[0].toUpperCase();
 document.getElementById('dash-iq').textContent = user.iq_level || 100;
 
@@ -293,14 +293,31 @@ async function loadDashboard() {
 }
 
 // Notification dropdown toggle
-document.getElementById('notif-btn').addEventListener('click', (e) => {
+document.getElementById('notif-btn').addEventListener('click', async (e) => {
   e.stopPropagation();
-  document.getElementById('notif-dropdown').classList.toggle('open');
+  const dropdown = document.getElementById('notif-dropdown');
+  const wasOpen = dropdown.classList.contains('open');
+  dropdown.classList.toggle('open');
+  
+  if (!wasOpen) {
+    const badge = document.getElementById('notif-count');
+    if (badge.style.display !== 'none') {
+      badge.style.display = 'none';
+      badge.textContent = '0';
+      UserAPI.markNotificationsRead();
+    }
+  }
 });
 document.addEventListener('click', () => document.getElementById('notif-dropdown').classList.remove('open'));
 
 // Socket
-initSocket();
+const sock = initSocket();
+sock.on('silent_notification', () => {
+   const badge = document.getElementById('notif-count');
+   badge.textContent = parseInt(badge.textContent || '0') + 1;
+   badge.style.display = 'flex';
+   loadDashboard(); // Reload notifications list silently
+});
 loadDashboard();
 </script>
 </body>

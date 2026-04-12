@@ -107,9 +107,17 @@ const updateSettings = async (req, res) => {
 const getNotifications = async (req, res) => {
   try {
     const { data: notifs } = await supabase.from('notifications').select('*').eq('user_id', req.user.id).order('created_at', { ascending: false }).limit(30);
-    // Mark as read
-    await supabase.from('notifications').update({ read: true }).eq('user_id', req.user.id).eq('read', false);
+    // Removed auto-mark as read to support Notification Bell Fix
     res.json({ success: true, notifications: notifs || [] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+const markNotificationsRead = async (req, res) => {
+  try {
+    await supabase.from('notifications').update({ read: true }).eq('user_id', req.user.id).eq('read', false);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error.' });
   }
@@ -124,4 +132,4 @@ const getStats = async (req, res) => {
   }
 };
 
-module.exports = { getProfile, updateProfile, submitKYC, changePassword, updateSettings, getNotifications, getStats };
+module.exports = { getProfile, updateProfile, submitKYC, changePassword, updateSettings, getNotifications, markNotificationsRead, getStats };

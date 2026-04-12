@@ -41,6 +41,7 @@
     .chat-input-wrap button:hover { opacity: 0.9; transform: scale(1.05); }
     .chat-input-wrap button:active { transform: scale(0.95); }
     @media (max-width: 900px) { .game-layout { flex-direction: column; } .side-panel { width: 100%; } }
+    .highlight-last-move { background: rgba(255, 255, 0, 0.4) !important; }
   </style>
 </head>
 <body>
@@ -172,7 +173,7 @@ let moveCount = 0;
 let selectedSquare = null;
 
 function removeHighlights() {
-  $('#board .square-55d63').removeClass('highlight-move highlight-selected');
+  $('#board .square-55d63').removeClass('highlight-move highlight-selected highlight-last-move');
 }
 
 function highlightSquare(square, type) {
@@ -184,6 +185,8 @@ function executeMove(from, to, promotion) {
   if (move === null) return false;
   
   removeHighlights();
+  highlightSquare(from, 'last-move');
+  highlightSquare(to, 'last-move');
   selectedSquare = null;
   board.position(chess.fen());
   addMoveToList(move.san);
@@ -653,7 +656,7 @@ sock.on('move_error', (data) => {
 
 sock.on('move_made', (data) => {
   if (data.fen) { chess.load(data.fen); board.position(data.fen); }
-  if (data.move) addMoveToList(data.move.san);
+  if (data.move) { addMoveToList(data.move.san); removeHighlights(); highlightSquare(data.move.from, 'last-move'); highlightSquare(data.move.to, 'last-move'); }
   updatePlayerBar();
   if (chess.game_over()) showResult();
 });

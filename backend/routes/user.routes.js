@@ -13,5 +13,6 @@ r1.post('/kyc', auth, uc.submitKYC);
 r1.post('/change-password', auth, uc.changePassword);
 r1.put('/settings', auth, uc.updateSettings);
 r1.get('/notifications', auth, uc.getNotifications);
+r1.put('/notifications/read', auth, uc.markNotificationsRead);
 r1.get('/stats', auth, uc.getStats);
 module.exports = { userRouter: r1 };

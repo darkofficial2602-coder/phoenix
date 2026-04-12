@@ -109,10 +109,26 @@ module.exports = (io) => {
     });
 
     // ─── FRIEND INVITE ───────────────────────────────────────
-    socket.on('invite_friend', ({ targetUserId, fromUserId, fromUsername, timer }) => {
+    socket.on('invite_friend', async ({ targetUserId, fromUserId, fromUsername, timer }) => {
       const targetSocket = userToSocket.get(targetUserId);
-      if (targetSocket) io.to(targetSocket).emit('friend_invite', { fromUserId, fromUsername, timer });
-      else socket.emit('invite_error', { message: 'Player is offline.' });
+      const isPlaying = Array.from(activeGames.values()).some(g => g.player1.userId === targetUserId || g.player2.userId === targetUserId);
+
+      if (isPlaying) {
+        try {
+          await supabase.from('notifications').insert({
+            user_id: targetUserId,
+            type: 'challenge',
+            title: 'New Challenge',
+            message: `${fromUsername} challenged you to a ${timer}-minute game!`,
+            read: false
+          });
+        } catch (e) { console.error('Silent invite notify error:', e); }
+
+        if (targetSocket) io.to(targetSocket).emit('silent_notification');
+      } else {
+        if (targetSocket) io.to(targetSocket).emit('friend_invite', { fromUserId, fromUsername, timer });
+        else socket.emit('invite_error', { message: 'Player is offline.' });
+      }
     });
 
     socket.on('accept_invite', ({ fromUserId, toUserId, fromUsername, toUsername, timer }) => {

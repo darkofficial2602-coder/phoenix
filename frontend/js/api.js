@@ -100,6 +100,7 @@ const UserAPI = {
   changePassword : (d) => api('/user/change-password', { method: 'POST', body: d }),
   updateSettings : (s) => api('/user/settings',        { method: 'PUT',  body: { settings: s } }),
   getNotifications: () => api('/user/notifications'),
+  markNotificationsRead: () => api('/user/notifications/read', { method: 'PUT' }),
   getStats       : ()  => api('/user/stats'),
   submitReport   : (d) => api('/user/report', { method: 'POST', body: d }),
   submitFeedback : (d) => api('/user/feedback', { method: 'POST', body: d }),

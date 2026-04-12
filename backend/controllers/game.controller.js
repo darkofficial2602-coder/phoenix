@@ -5,7 +5,7 @@ const getMatchHistory = async (req, res) => {
     const { filter, page = 1, limit = 20 } = req.query;
     let query = supabase
       .from('matches')
-      .select('*, p1:player1_id(username, profile_image, iq_level), p2:player2_id(username, profile_image, iq_level)', { count: 'exact' })
+      .select('*, p1:player1_id(id, username, profile_image, iq_level), p2:player2_id(id, username, profile_image, iq_level)', { count: 'exact' })
       .or(`player1_id.eq.${req.user.id},player2_id.eq.${req.user.id}`)
       .eq('status', 'finished')
       .order('created_at', { ascending: false })
@@ -65,7 +65,7 @@ const getMatchById = async (req, res) => {
   try {
     const { data: match } = await supabase
       .from('matches')
-      .select('*, p1:player1_id(username, profile_image, iq_level), p2:player2_id(username, profile_image, iq_level)')
+      .select('*, p1:player1_id(id, username, profile_image, iq_level), p2:player2_id(id, username, profile_image, iq_level)')
       .eq('id', req.params.id)
       .single();
     if (!match) return res.status(404).json({ success: false, message: 'Match not found.' });

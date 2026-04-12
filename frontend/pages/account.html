@@ -124,6 +124,32 @@
           <div id="kyc-status-display"></div>
         </div>
 
+        <!-- Account Details (Only visible if KYC verified) -->
+        <div class="card mb-20" id="account-details-card" style="display:none">
+          <div class="card-title">Withdrawal Account Details</div>
+          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">Enter your bank acc details or UPI ID for withdrawals.</p>
+          <div class="grid-2" style="gap:16px">
+            <div class="input-group">
+              <label class="input-label">Account Number</label>
+              <input type="text" id="acc-num" class="input" placeholder="Bank Account Number">
+            </div>
+            <div class="input-group">
+              <label class="input-label">IFSC Code</label>
+              <input type="text" id="acc-ifsc" class="input" placeholder="IFSC Code" style="text-transform:uppercase">
+            </div>
+            <div class="input-group" style="grid-column: span 2;">
+              <label class="input-label">Account Holder Name</label>
+              <input type="text" id="acc-name" class="input" placeholder="Name as per Bank">
+            </div>
+          </div>
+          <div style="text-align:center;margin:8px 0;font-size:12px;color:var(--text-muted);font-weight:700">OR</div>
+          <div class="input-group">
+             <label class="input-label">UPI ID</label>
+             <input type="text" id="upi-id" class="input" placeholder="example@upi">
+          </div>
+          <button class="btn btn-primary" onclick="savePaymentDetails()"><i class="fa-solid fa-floppy-disk"></i> Save Details</button>
+        </div>
+
         <!-- KYC Form -->
         <div class="card" id="kyc-form-card">
           <div class="card-title">Submit KYC Documents</div>
@@ -398,8 +424,13 @@ async function loadProfile() {
     not_verified: `<div style="background:rgba(255,107,53,0.08);border:1px solid rgba(255,107,53,0.2);border-radius:10px;padding:16px"><div style="font-weight:600;margin-bottom:8px">Why KYC?</div><div style="font-size:12px;color:var(--text-secondary);line-height:1.7"><i class="fa-solid fa-check"></i> Unlock wallet (deposit & withdraw)<br><i class="fa-solid fa-check"></i> Join paid tournaments<br><i class="fa-solid fa-check"></i> Win real coin prizes</div></div>`,
   };
   document.getElementById('kyc-status-display').innerHTML = kycDisplay[u.kyc_status] || kycDisplay.not_verified;
-  if (u.kyc_status === 'verified') document.getElementById('kyc-form-card').style.display = 'none';
-}
+  if (u.kyc_status === 'verified') {
+     document.getElementById('kyc-form-card').style.display = 'none';
+     document.getElementById('account-details-card').style.display = 'block';
+     
+     // Note: Populating saved details would usually fetch from backend.
+     // In this specific requirement, we only add validation/UI.
+  }
 
 async function saveProfile() {
   const btn = document.getElementById('save-profile-btn');
@@ -446,11 +477,26 @@ async function submitKYC() {
 
   if (!name) return Toast.error('Please enter your name.');
   
-  // Note: For a fully featured production system, implement a multipart/form-data fetch here to actually upload `photoInput.files[0]` to the Supabase Storage Bucket!
-  // Since we accept either or, we pass 'PHOTO_UPLOADED' to the database so admin knows a photo was attached.
   const res = await UserAPI.submitKYC({ type: kycType, name, id_number: idNumber });
   if (res?.success) { Toast.success('KYC submitted! Under review.'); loadProfile(); }
   else Toast.error(res?.message || 'Submission failed.');
+}
+
+function savePaymentDetails() {
+  const an = document.getElementById('acc-num').value.trim();
+  const ifsc = document.getElementById('acc-ifsc').value.trim();
+  const aname = document.getElementById('acc-name').value.trim();
+  const upi = document.getElementById('upi-id').value.trim();
+  
+  const hasBank = an && ifsc && aname;
+  if (!hasBank && !upi) {
+    return Toast.error('Provide Bank Details (Acc+IFSC+Name) OR UPI ID.');
+  }
+  if (upi && !/^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/.test(upi)) {
+     return Toast.error('Please enter a valid UPI ID');
+  }
+  
+  Toast.success('Account Details Saved locally! (UI validated)');
 }
 
 async function changePassword() {

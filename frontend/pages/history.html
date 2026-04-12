@@ -97,8 +97,8 @@ async function loadMatches(append = false) {
         <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${modeLabels[m.match_type] || m.match_type} · ${m.timer_type ? m.timer_type + ' min' : 'No timer'}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
-        <div style="font-size:11px;color:var(--text-muted)">${fmt.relTime(m.createdAt)}</div>
-        <div style="font-size:10px;color:var(--text-muted);margin-top:3px">${new Date(m.createdAt).toLocaleDateString('en-IN')}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${fmt.relTime(m.created_at)}</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:3px">${new Date(m.created_at).toLocaleDateString('en-IN')}</div>
       </div>
     </div>`;
   }).join('');

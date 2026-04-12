@@ -146,10 +146,11 @@
         style="background:rgba(91,192,235,0.08);border:1px solid rgba(91,192,235,0.2);padding:10px 14px;border-radius:8px;margin-bottom:16px;font-size:13px">
         Available: <strong id="wd-available">0</strong> coins
       </div>
-      <div class="input-group">
+      <div class="input-group" style="margin-bottom:8px">
         <label class="input-label">Coins to Withdraw</label>
         <input type="number" id="withdraw-amount" class="input" placeholder="Min 30 coins" min="30">
       </div>
+      <div id="wd-gst-breakdown" style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;min-height:36px"></div>
       <div id="wd-error" class="error-msg"></div>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeModal('withdraw-modal')">Cancel</button>
@@ -281,6 +282,19 @@
       }
       btn.disabled = false; btn.textContent = 'Pay via Razorpay';
     }
+
+    // GST Calculation listener
+    document.getElementById('withdraw-amount').addEventListener('input', (e) => {
+      const amt = parseInt(e.target.value) || 0;
+      const breakdownEl = document.getElementById('wd-gst-breakdown');
+      if (amt >= 30) {
+        const gst = amt * 0.18;
+        const finalAmount = amt - gst;
+        breakdownEl.innerHTML = `GST (18%): <span style="color:var(--error)">-${gst.toFixed(2)} coins</span><br><strong style="color:var(--gold)">Final Payout: ${finalAmount.toFixed(2)} coins</strong>`;
+      } else {
+        breakdownEl.innerHTML = '';
+      }
+    });
 
     async function submitWithdraw() {
       const amount = parseInt(document.getElementById('withdraw-amount').value);
