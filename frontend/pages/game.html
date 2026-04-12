@@ -223,8 +223,6 @@ $(document).on('mousedown touchstart', '#board .square-55d63', function(e) {
 document.getElementById('my-name').textContent = fmt.username(user.username);
 document.getElementById('my-avatar').textContent = (user.username || 'P').replace('@', '')[0].toUpperCase();
 document.getElementById('my-iq').textContent = 'IQ: ' + user.iq_level;
-document.getElementById('info-mode').textContent = mode;
-document.getElementById('info-color').textContent = myColor === 'white' ? '⬜ White' : '⬛ Black';
 
 if (mode === 'bot') {
   const customName = localStorage.getItem('px_bot_name') || 'Bot Engine';
