@@ -173,7 +173,17 @@ let moveCount = 0;
 let selectedSquare = null;
 
 function removeHighlights() {
-  $('#board .square-55d63').removeClass('highlight-move highlight-selected highlight-last-move');
+  $('#board .square-55d63').removeClass('highlight-move highlight-selected');
+}
+
+function updateLastMoveHighlight() {
+  $('#board .square-55d63').removeClass('highlight-last-move');
+  const hist = chess.history({ verbose: true });
+  if (hist.length > 0) {
+    const last = hist[hist.length - 1];
+    highlightSquare(last.from, 'last-move');
+    highlightSquare(last.to, 'last-move');
+  }
 }
 
 function highlightSquare(square, type) {
@@ -185,10 +195,10 @@ function executeMove(from, to, promotion) {
   if (move === null) return false;
   
   removeHighlights();
-  highlightSquare(from, 'last-move');
-  highlightSquare(to, 'last-move');
   selectedSquare = null;
   board.position(chess.fen());
+  setTimeout(updateLastMoveHighlight, 250);
+  
   addMoveToList(move.san);
   updatePlayerBar();
   
@@ -247,6 +257,7 @@ function initBoard() {
     onDragStart: onDragStart,
     onDrop: onDrop,
     onSnapEnd: onSnapEnd,
+    onMoveEnd: updateLastMoveHighlight
   });
 }
 
@@ -291,7 +302,10 @@ function onDrop(source, target) {
   executeMove(source, target, 'q');
 }
 
-function onSnapEnd() { board.position(chess.fen()); }
+function onSnapEnd() { 
+  board.position(chess.fen()); 
+  setTimeout(updateLastMoveHighlight, 250);
+}
 
 // ─── BOT ENGINE LOGIC ───
 const pieceValues = { p: 10, n: 30, b: 30, r: 50, q: 90, k: 900 };
@@ -422,6 +436,8 @@ function makeBotMove() {
 
   chess.move(move);
   board.position(chess.fen());
+  setTimeout(updateLastMoveHighlight, 250);
+  
   addMoveToList(move);
   updatePlayerBar();
   document.getElementById('bot-thinking').style.display = 'none';
@@ -573,6 +589,7 @@ function undoMove() {
   
   moveCount -= 2;
   updatePlayerBar();
+  updateLastMoveHighlight();
   Toast.success("Move Undone!");
 }
 
@@ -655,8 +672,15 @@ sock.on('move_error', (data) => {
 });
 
 sock.on('move_made', (data) => {
-  if (data.fen) { chess.load(data.fen); board.position(data.fen); }
-  if (data.move) { addMoveToList(data.move.san); removeHighlights(); highlightSquare(data.move.from, 'last-move'); highlightSquare(data.move.to, 'last-move'); }
+  if (data.fen) { 
+    chess.load(data.fen); 
+    board.position(data.fen); 
+    setTimeout(updateLastMoveHighlight, 250);
+  }
+  if (data.move) { 
+    addMoveToList(data.move.san); 
+    removeHighlights(); 
+  }
   updatePlayerBar();
   if (chess.game_over()) showResult();
 });
