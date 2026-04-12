@@ -89,11 +89,13 @@ const processMatchResult = async (matchId, result, winnerId, finalFen = null) =>
     const iq2 = p2Win ? IQ_WIN : isDraw ? IQ_DRAW : IQ_LOSS;
 
     // Update match
-    await supabase.from('matches').update({
+    const { error: matchErr } = await supabase.from('matches').update({
       result, winner_id: winnerId || null, status: 'finished',
       iq_change_p1: iq1, iq_change_p2: iq2, end_time: new Date().toISOString(),
       fen: finalFen
     }).eq('id', matchId);
+    
+    if (matchErr) console.error('Match Update Error:', matchErr);
 
     // Update player stats helper
     const updatePlayer = async (userId, won, lost, drew, iqChange) => {
