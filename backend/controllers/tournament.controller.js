@@ -89,9 +89,9 @@ const autoCreateFreeTournaments = async (customStartTime, customEndTime) => {
     const startTime = customStartTime || new Date(Date.now() + 30 * 60 * 1000).toISOString();
     const endTime = customEndTime || new Date(new Date(startTime).getTime() + 30 * 60 * 1000).toISOString();
     
-    // Check if we already have upcoming free tournaments for this EXACT start time to prevent duplicates
+    // strictly enforce ONE upcoming batch at any time
     const { data: existing } = await supabase.from('tournaments')
-      .select('id').eq('type', 'free').eq('status', 'upcoming').eq('start_time', startTime);
+      .select('id').eq('type', 'free').eq('status', 'upcoming');
       
     if (existing && existing.length > 0) return;
 
