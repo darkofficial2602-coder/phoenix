@@ -37,7 +37,7 @@ const joinTournament = async (req, res) => {
   try {
     const { data: tournament } = await supabase.from('tournaments').select('*').eq('id', req.params.id).single();
     if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found.' });
-    if (tournament.status === 'completed' || tournament.status === 'cancelled') return res.status(400).json({ success: false, message: 'Tournament not joinable.' });
+    if (tournament.status === 'completed' || tournament.status === 'cancelled' || tournament.status === 'live') return res.status(400).json({ success: false, message: 'Tournament is locked or already finished.' });
     if (tournament.current_players >= tournament.max_players) return res.status(400).json({ success: false, message: 'Tournament is full.' });
 
     // Check already joined
@@ -140,9 +140,9 @@ const autoCreatePaidTournaments = async () => {
     const now = Date.now();
     const intervals = { 1: 5 * 60000, 3: 20 * 60000, 5: 30 * 60000 };
     const configs = [
-      { type: 1, timer: 1, max: 16, entries: [5, 10, 15, 20, 30, 50], name: '1 Min Knockout TR' },
-      { type: 2, timer: 3, max: 32, entries: [10, 20, 50, 80, 100, 200], name: '3 Min Knockout TR' },
-      { type: 3, timer: 5, max: 100, entries: [10, 20, 50, 80, 100, 200, 500], name: '5 Min Hybrid TR' }
+      { type: 1, timer: 1, max: 16, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 500], name: '1 Min Knockout TR' },
+      { type: 2, timer: 3, max: 32, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 500], name: '3 Min Knockout TR' },
+      { type: 3, timer: 5, max: 100, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 500], name: '5 Min Hybrid TR' }
     ];
     
     for (const conf of configs) {
