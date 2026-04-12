@@ -708,7 +708,13 @@ sock.on('game_over', (data) => {
   document.getElementById('result-icon').textContent = isDraw ? '<i class="fa-solid fa-handshake"></i>' : (won ? '<i class="fa-solid fa-trophy"></i>' : '<i class="fa-solid fa-face-frown"></i>');
   document.getElementById('result-title').textContent = isDraw ? 'Draw!' : (won ? 'You Won! <i class="fa-solid fa-champagne-glasses"></i>' : 'You Lost');
   document.getElementById('result-title').style.color = isDraw ? '' : (won ? '#5bc0eb' : 'var(--error)');
-  document.getElementById('result-iq').textContent = data.reason === 'disconnect' ? 'Opponent disconnected' : '';
+
+  let reasonMsg = '';
+  if (data.reason === 'disconnect') reasonMsg = 'Opponent disconnected';
+  else if (data.reason === 'abandoned') reasonMsg = 'Match abandoned (No move in 30s)';
+  else if (data.reason === 'timeout') reasonMsg = 'Time out';
+  
+  document.getElementById('result-iq').textContent = reasonMsg;
 });
 
 // Start game

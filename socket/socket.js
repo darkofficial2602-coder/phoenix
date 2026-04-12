@@ -186,6 +186,25 @@ module.exports = (io) => {
       io.to(game.player1.socketId).emit('move_made', moveData);
       io.to(game.player2.socketId).emit('move_made', moveData);
 
+      // Handle abort timeouts and timer start logic
+      if (game.abortTimeout) {
+        clearTimeout(game.abortTimeout);
+        game.abortTimeout = null;
+      }
+
+      game.moveCount = (game.moveCount || 0) + 1;
+
+      if (game.moveCount === 1) {
+        // White just made the first move. Time to start the overall timer ticking.
+        startTimer(io, matchId, game);
+        
+        // Give Black 30 seconds to make their first response, otherwise DRAW.
+        game.abortTimeout = setTimeout(async () => {
+          if (!activeGames.has(matchId)) return;
+          await endGame(io, matchId, game, 'draw', null, 'abandoned');
+        }, 30000);
+      }
+
       // Persist move to Supabase
       try {
         const { data: m } = await supabase.from('matches').select('moves').eq('id', matchId).single();
@@ -320,13 +339,20 @@ module.exports = (io) => {
         player2: { userId: p2.userId, socketId: p2.socketId || socket.id, time: t * 60 },
         timer_type: t,
         interval: null,
+        moveCount: 0,
+        abortTimeout: null,
       };
       activeGames.set(match.id, gameState);
 
       io.to(p1.socketId).emit('match_found', { matchId: match.id, color: 'white', opponent: { username: p2.username, userId: p2.userId }, timer: t });
       io.to(p2.socketId || socket.id).emit('match_found', { matchId: match.id, color: 'black', opponent: { username: p1.username, userId: p1.userId }, timer: t });
 
-      startTimer(io, match.id, gameState);
+      // Start 30s abort timer for White's first move
+      gameState.abortTimeout = setTimeout(async () => {
+         if (!activeGames.has(match.id)) return;
+         await endGame(io, match.id, gameState, 'draw', null, 'abandoned');
+      }, 30000);
+
       broadcastLiveInfo(io);
     } catch (err) {
       console.error('createMatch error:', err);
@@ -357,6 +383,7 @@ module.exports = (io) => {
     if (!activeGames.has(matchId)) return;
     if (game.interval) clearInterval(game.interval);
     if (game.disconnectTimeout) clearTimeout(game.disconnectTimeout);
+    if (game.abortTimeout) clearTimeout(game.abortTimeout);
     activeGames.delete(matchId);
 
     let result = forceResult;
