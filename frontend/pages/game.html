@@ -537,18 +537,18 @@ function showResult(reason) {
   overlay.classList.add('active');
 
   if (reason === 'timeout_loss') {
-    icon.textContent = '<i class="fa-solid fa-clock"></i>'; title.textContent = 'Time\'s Up!'; title.style.color = 'var(--error)'; iqEl.textContent = '-5 IQ';
+    icon.innerHTML = '<i class="fa-solid fa-clock"></i>'; title.textContent = 'Time\'s Up!'; title.style.color = 'var(--error)'; iqEl.textContent = '-5 IQ';
   } else if (chess.in_checkmate()) {
     const myColorChar = myColor === 'white' ? 'w' : 'b';
     if (chess.turn() !== myColorChar) {
-      icon.textContent = '<i class="fa-solid fa-trophy"></i>'; title.textContent = 'You Won!'; title.style.color = '#5bc0eb'; iqEl.textContent = '+15 IQ';
+      icon.innerHTML = '<i class="fa-solid fa-trophy"></i>'; title.textContent = 'You Won!'; title.style.color = '#5bc0eb'; iqEl.textContent = '+15 IQ';
     } else {
-      icon.textContent = '<i class="fa-solid fa-face-frown"></i>'; title.textContent = 'You Lost!'; title.style.color = 'var(--error)'; iqEl.textContent = '-5 IQ';
+      icon.innerHTML = '<i class="fa-solid fa-face-frown"></i>'; title.textContent = 'You Lost!'; title.style.color = 'var(--error)'; iqEl.textContent = '-5 IQ';
     }
   } else if (chess.in_draw() || chess.in_stalemate()) {
-    icon.textContent = '<i class="fa-solid fa-handshake"></i>'; title.textContent = 'Draw!'; title.style.color = 'var(--text-secondary)'; iqEl.textContent = '+10 IQ';
+    icon.innerHTML = '<i class="fa-solid fa-handshake"></i>'; title.textContent = 'Draw!'; title.style.color = 'var(--text-secondary)'; iqEl.textContent = '+10 IQ';
   } else {
-    icon.textContent = '<i class="fa-solid fa-flag-checkered"></i>'; title.textContent = 'Game Over'; iqEl.textContent = '';
+    icon.innerHTML = '<i class="fa-solid fa-flag-checkered"></i>'; title.textContent = 'Game Over'; iqEl.textContent = '';
   }
 }
 
@@ -705,7 +705,7 @@ sock.on('game_over', (data) => {
   const won = data.winnerId === user.id;
   const isDraw = data.result === 'draw';
   document.getElementById('result-overlay').classList.add('active');
-  document.getElementById('result-icon').textContent = isDraw ? '<i class="fa-solid fa-handshake"></i>' : (won ? '<i class="fa-solid fa-trophy"></i>' : '<i class="fa-solid fa-face-frown"></i>');
+  document.getElementById('result-icon').innerHTML = isDraw ? '<i class="fa-solid fa-handshake"></i>' : (won ? '<i class="fa-solid fa-trophy"></i>' : '<i class="fa-solid fa-face-frown"></i>');
   document.getElementById('result-title').textContent = isDraw ? 'Draw!' : (won ? 'You Won! <i class="fa-solid fa-champagne-glasses"></i>' : 'You Lost');
   document.getElementById('result-title').style.color = isDraw ? '' : (won ? '#5bc0eb' : 'var(--error)');
 
