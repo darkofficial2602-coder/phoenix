@@ -1,11 +1,11 @@
-const { supabase } = require('../backend/config/supabase');
-const { processMatchResult } = require('../backend/controllers/game.controller');
+const { supabase } = require('../config/supabase');
+const { processMatchResult } = require('../controllers/game.controller');
 
 // chess.js v1 compatible import
 let Chess;
 try { Chess = require('chess.js').Chess; } catch { Chess = require('chess.js'); }
 
-const TournamentManager = require('../backend/services/tournament.manager');
+const TournamentManager = require('../services/tournament.manager');
 
 // Matchmaking queues per timer: { 1: [], 3: [], 5: [], 10: [] }
 const queues = { 1: [], 3: [], 5: [], 10: [] };
@@ -21,10 +21,11 @@ const socketToUser = new Map(); // socketId → { userId, username }
 const userToSocket = new Map(); // userId  → socketId
 const userSockets = new Map();  // userId  → Set(socketId)
 
+const banLocks = new Set(); // Prevents anti-cheat double-confiscation race condition
+
 let onlineCount = 0;
 
 module.exports = (io) => {
-  TournamentManager.init(io);
 
   // Expose for updates
   io.on('connection', (socket) => {
@@ -35,10 +36,14 @@ module.exports = (io) => {
     socket.on('authenticate', async ({ userId, username }) => {
       // Single-Device Enforcement
       if (userSockets.has(userId) && userSockets.get(userId).size > 0) {
-          // They already have an active session
-          socket.emit('auth_error', { message: 'Your account is actively running on another device or window. Access blocked.' });
-          socket.disconnect(true);
-          return;
+          // Gracefully disconnect OLD sockets to allow seamless reconnections 
+          // without triggering the 60s timeout lock.
+          for (const oldSocketId of userSockets.get(userId)) {
+              io.to(oldSocketId).emit('auth_error', { message: 'Logged in from another device. Session terminated.' });
+              const oldSocket = io.sockets.sockets.get(oldSocketId);
+              if (oldSocket) oldSocket.disconnect(true);
+          }
+          userSockets.get(userId).clear();
       }
 
       socketToUser.set(socket.id, { userId, username });
@@ -154,8 +159,14 @@ module.exports = (io) => {
 
     socket.on('accept_invite', ({ fromUserId, toUserId, fromUsername, toUsername, timer }) => {
       const fromSocket = userToSocket.get(fromUserId);
-      const p1 = { socketId: fromSocket, userId: fromUserId, username: fromUsername };
-      const p2 = { socketId: socket.id, userId: toUserId, username: toUsername };
+      const host = { socketId: fromSocket, userId: fromUserId, username: fromUsername };
+      const guest = { socketId: socket.id, userId: toUserId, username: toUsername };
+      
+      // Randomize White/Black colors for fair Friend Match initiation
+      const isHostWhite = Math.random() < 0.5;
+      const p1 = isHostWhite ? host : guest;
+      const p2 = isHostWhite ? guest : host;
+      
       createMatch(io, socket, p2, p1, 'friend', timer);
     });
 
@@ -184,7 +195,11 @@ module.exports = (io) => {
     });
 
     // ─── CHESS MOVE ──────────────────────────────────────────
-    socket.on('make_move', async ({ matchId, move, userId }) => {
+    socket.on('make_move', async ({ matchId, move }) => {
+      const caller = socketToUser.get(socket.id);
+      if (!caller) return;
+      const userId = caller.userId;
+
       const game = activeGames.get(matchId);
       if (!game) return socket.emit('move_error', { message: 'Game not found.' });
 
@@ -207,23 +222,11 @@ module.exports = (io) => {
       io.to(game.player1.socketId).emit('move_made', moveData);
       io.to(game.player2.socketId).emit('move_made', moveData);
 
-      // Handle abort timeouts and timer start logic
-      if (game.abortTimeout) {
-        clearTimeout(game.abortTimeout);
-        game.abortTimeout = null;
-      }
-
       game.moveCount = (game.moveCount || 0) + 1;
 
       if (game.moveCount === 1) {
-        // White just made the first move. Time to start the overall timer ticking.
+        if (game.abortTimeout) clearTimeout(game.abortTimeout);
         startTimer(io, matchId, game);
-        
-        // Give Black 30 seconds to make their first response, otherwise DRAW.
-        game.abortTimeout = setTimeout(async () => {
-          if (!activeGames.has(matchId)) return;
-          await endGame(io, matchId, game, 'draw', null, 'abandoned');
-        }, 30000);
       }
 
       // Persist move to Supabase
@@ -251,7 +254,11 @@ module.exports = (io) => {
     });
 
     // ─── RESIGN ──────────────────────────────────────────────
-    socket.on('resign', async ({ matchId, userId }) => {
+    socket.on('resign', async ({ matchId }) => {
+      const caller = socketToUser.get(socket.id);
+      if (!caller) return;
+      const userId = caller.userId;
+
       const game = activeGames.get(matchId);
       if (!game) return;
       const isP1 = game.player1.userId === userId;
@@ -261,7 +268,11 @@ module.exports = (io) => {
     });
 
     // ─── DRAW OFFER ──────────────────────────────────────────
-    socket.on('offer_draw', ({ matchId, userId }) => {
+    socket.on('offer_draw', ({ matchId }) => {
+      const caller = socketToUser.get(socket.id);
+      if (!caller) return;
+      const userId = caller.userId;
+
       const game = activeGames.get(matchId);
       if (!game) return;
       const opponentSocket = game.player1.userId === userId ? game.player2.socketId : game.player1.socketId;
@@ -275,54 +286,8 @@ module.exports = (io) => {
     });
 
     // ─── ANTI-CHEAT ──────────────────────────────────────────
-    socket.on('cheat_detected', async ({ matchId, userId }) => {
-      const game = activeGames.get(matchId);
-      if (!game) return;
-      if (game.player1.userId !== userId && game.player2.userId !== userId) return;
-
-      const isP1 = game.player1.userId === userId;
-      const winnerId = isP1 ? game.player2.userId : game.player1.userId;
-      const result = isP1 ? 'player2_win' : 'player1_win';
-
-      // 1. Terminate the game, assigning win to innocent player
-      await endGame(io, matchId, game, result, winnerId, 'cheat_detected');
-
-      // 2. Ban and Asset Confiscation
-      try {
-        await supabase.from('profiles').update({ status: 'banned', is_online: false }).eq('id', userId);
-
-        const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', userId).single();
-        const confAmount = Number(wallet?.balance || 0);
-
-        if (confAmount > 0) {
-          await supabase.from('wallets').update({ balance: 0 }).eq('user_id', userId);
-
-          // Find master admin wallet and transfer confiscated wrapper
-          const { data: admin } = await supabase.from('profiles').select('id').eq('is_admin', true).limit(1).single();
-          if (admin) {
-             const { data: adminWallet } = await supabase.from('wallets').select('balance').eq('user_id', admin.id).single();
-             const newBal = Number(adminWallet?.balance || 0) + confAmount;
-             await supabase.from('wallets').update({ balance: newBal }).eq('user_id', admin.id);
-             
-             await supabase.from('transactions').insert({
-               user_id: admin.id, type: 'deposit', amount: confAmount, status: 'success',
-               description: 'Coins confiscated from banned cheater', balance_after: newBal
-             });
-          }
-
-          // Cheater penalty log
-          await supabase.from('transactions').insert({
-             user_id: userId, type: 'penalty', amount: confAmount, status: 'success',
-             description: 'Coins confiscated for cheating', balance_after: 0
-          });
-        }
-        
-        socket.emit('game_over', { result: 'banned', reason: 'You were banned for cheating.' });
-        socket.disconnect(true);
-      } catch(e) {
-        console.error("Anti-cheat confiscation error:", e);
-      }
-    });
+    // cheat_detected listener removed to prevent client-trusted security hole.
+    // Server-side analysis will be implemented in future via cron or match logs.
 
     // ─── DISCONNECT ──────────────────────────────────────────
     socket.on('disconnect', async () => {
@@ -372,7 +337,9 @@ module.exports = (io) => {
         }
 
         socketToUser.delete(socket.id);
-        userToSocket.delete(userData.userId);
+        if (!userSockets.has(userData.userId) || userSockets.get(userData.userId).size === 0) {
+           userToSocket.delete(userData.userId);
+        }
       }
 
       broadcastLiveInfo(io);
@@ -386,6 +353,7 @@ module.exports = (io) => {
       const matchData = {
         player1_id: p1.userId,
         player2_id: p2.userId,
+        player1_color: p1.color || 'white',
         match_type: matchType,
         timer_type: t,
         status: 'active',
@@ -479,12 +447,7 @@ module.exports = (io) => {
     broadcastLiveInfo(io);
   }
 
-  // ─── BROADCAST LIVE INFO ──────────────────────────────────
   function broadcastLiveInfo(io) {
     io.emit('live_info', { online_users: onlineCount, active_matches: activeGames.size });
   }
-};
-
-module.exports.isUserOnline = (userId) => {
-  return userSockets.has(userId) && userSockets.get(userId).size > 0;
 };

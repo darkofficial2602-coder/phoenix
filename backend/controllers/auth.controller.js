@@ -112,12 +112,6 @@ const login = async (req, res) => {
 
     const userId = data.user.id;
 
-    // Check if user is already online elsewhere
-    const socketModule = require('../../socket/socket');
-    if (socketModule.isUserOnline && socketModule.isUserOnline(userId)) {
-      return res.status(403).json({ success: false, message: 'Your account is already active on another device or browser. Access denied.' });
-    }
-
     // Get profile + wallet
     const [{ data: profile }, { data: wallet }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', userId).single(),
@@ -201,14 +195,10 @@ const oauthLogin = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid or expired OAuth token.' });
     }
 
+    const provider = authUser.app_metadata?.provider;
+
     const userId = authUser.id;
     const email = authUser.email;
-
-    // Check if user is already online elsewhere
-    const socketModule = require('../../socket/socket');
-    if (socketModule.isUserOnline && socketModule.isUserOnline(userId)) {
-      return res.status(403).json({ success: false, message: 'Your account is already active on another device or browser. Access denied.' });
-    }
 
     // Check if profile exists
     let { data: profile } = await supabase
@@ -224,17 +214,22 @@ const oauthLogin = async (req, res) => {
 
       // Normalize to @username format
       let finalUsername = normalizeUsername(rawName);
-      // Ensure at least 4 chars after @
-      if (finalUsername.length < 5) finalUsername = finalUsername + '_user';
+      const namePart = finalUsername.replace('@', '');
+      if (namePart.length < 4) {
+        finalUsername = '@player' + Math.floor(Math.random() * 9999);
+      }
 
       // Ensure unique @username
-      const { data: existingUser } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('username', finalUsername)
-        .maybeSingle();
-      if (existingUser) {
-        finalUsername = normalizeUsername(rawName + '_' + Math.floor(Math.random() * 9999));
+      let attempts = 0;
+      while (attempts < 5) {
+          const { data: existingUser } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('username', finalUsername)
+            .maybeSingle();
+          if (!existingUser) break;
+          finalUsername = normalizeUsername(rawName + '_' + Math.floor(Math.random() * 9999));
+          attempts++;
       }
 
       const { data: newProfile, error: profileError } = await supabase

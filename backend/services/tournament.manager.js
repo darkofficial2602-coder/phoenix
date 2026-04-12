@@ -57,6 +57,7 @@ class TournamentManager {
         const tState = {
             id: tournamentId,
             players: [...playersData], // { user_id, socketId, username, rank, points }
+            allPlayers: [...playersData],
             max: tData.max_players,
             timer: tData.timer_type,
             status: 'lobby_wait',
@@ -69,6 +70,15 @@ class TournamentManager {
         
         // initialize points
         tState.players.forEach(p => p.points = 0);
+        tState.allPlayers.forEach(p => p.points = 0);
+
+        // Join players to tournament room
+        playersData.forEach(p => {
+          if (p.socketId) {
+            const s = this.io.sockets.sockets.get(p.socketId);
+            if (s) s.join(`tournament_${tournamentId}`);
+          }
+        });
 
         activeTourneys.set(tournamentId, tState);
         this.broadcastState(tournamentId);
@@ -110,7 +120,7 @@ class TournamentManager {
                         this.finishTournament(tId, tState);
                     } else {
                         tState.round++;
-                        this.createRoundMatches(tState);
+                        this.createRoundMatches(tState).catch(console.error);
                     }
                 } else if (tState.countdown <= 5) {
                     this.broadcastState(tId);
@@ -138,9 +148,9 @@ class TournamentManager {
         });
     }
 
-    static transitionInitialRound(tState) {
+    static async transitionInitialRound(tState) {
         tState.round = 1;
-        this.createRoundMatches(tState);
+        await this.createRoundMatches(tState);
     }
 
     static processHybridLeaderboard(tState) {
@@ -181,17 +191,19 @@ class TournamentManager {
         eliminated.forEach(p => { p.status = 'eliminated'; this.notifyEliminated(p, tState); });
         
         // Wait, what if someone had a bye (no opponent)?
+        const advancedIds = new Set(advanced.map(p => p.user_id));
         tState.players.forEach(p => {
              const played = tState.matches.some(m => m.player1.userId === p.user_id || m.player2.userId === p.user_id);
-             if (!played && !eliminated.includes(p)) {
+             if (!played && !advancedIds.has(p.user_id)) {
                  advanced.push(p); // Byes advance automatically
+                 advancedIds.add(p.user_id);
              }
         });
 
         tState.players = advanced;
     }
 
-    static createRoundMatches(tState) {
+    static async createRoundMatches(tState) {
         tState.status = 'playing';
         tState.matches = [];
         
@@ -202,7 +214,7 @@ class TournamentManager {
         while (pool.length >= 2) {
             const p1 = pool.pop();
             const p2 = pool.pop();
-            this.setupMatch(p1, p2, tState);
+            await this.setupMatch(p1, p2, tState);
         }
 
         // Handle bye if pool.length == 1
@@ -214,8 +226,24 @@ class TournamentManager {
         this.broadcastState(tState.id);
     }
 
-    static setupMatch(p1, p2, tState) {
-        const matchId = 'pxm_' + Math.random().toString(36).substr(2, 9);
+    static async setupMatch(p1, p2, tState) {
+        // Save legitimately to database so stats don't silent fail
+        const { data: dbMatch, error } = await supabase.from('matches').insert({
+            player1_id: p1.user_id,
+            player2_id: p2.user_id,
+            match_type: 'tournament',
+            timer_type: tState.timer,
+            tournament_id: tState.id,
+            status: 'active',
+            start_time: new Date().toISOString()
+        }).select().single();
+
+        if (error || !dbMatch) {
+            console.error('Failed to create DB match for Tournament:', error);
+            return;
+        }
+
+        const matchId = dbMatch.id;
         const roomId = 'tr_' + matchId;
         
         const match = {
@@ -236,8 +264,8 @@ class TournamentManager {
         // Put players in room
         const s1 = this.io.sockets.sockets.get(p1.socketId);
         const s2 = this.io.sockets.sockets.get(p2.socketId);
-        if (s1) s1.join(roomId);
-        if (s2) s2.join(roomId);
+        if (s1) { s1.join(roomId); s1.join(`tournament_${tState.id}`); }
+        if (s2) { s2.join(roomId); s2.join(`tournament_${tState.id}`); }
 
         const eventData = { matchId, roomId, duration: tState.timer * 60, round: tState.round };
         this.io.to(p1.socketId).emit('match_found_tr', { ...eventData, color: 'white', opponent: p2 });
@@ -325,8 +353,18 @@ class TournamentManager {
         
         if (winner) {
             console.log(`Tournament ${tId} Won by ${winner.user_id}! Distributing prizes.`);
-            // Fetch final leaderboard exactly as they were knocked out
-            // For now, simple implementation logic. Will be properly seeded.
+            const { data: tData } = await supabase.from('tournaments').select('*').eq('id', tId).single();
+            if (tData) {
+                // Sync points to DB before distributing prizes
+                for (const p of tState.allPlayers) {
+                  await supabase.from('tournament_players')
+                    .update({ score: p.points || 0 })
+                    .eq('tournament_id', tId)
+                    .eq('user_id', p.user_id);
+                }
+                const { distributeTournamentPrizes } = require('../controllers/tournament.controller');
+                await distributeTournamentPrizes(tData);
+            }
         }
 
         activeTourneys.delete(tId);
@@ -335,7 +373,7 @@ class TournamentManager {
     static broadcastState(tId) {
         const tState = activeTourneys.get(tId);
         if (!tState) return;
-        this.io.sockets.emit(`tournament_sync_${tId}`, {
+        this.io.to(`tournament_${tId}`).emit(`tournament_sync_${tId}`, {
              status: tState.status,
              countdown: tState.countdown,
              round: tState.round,

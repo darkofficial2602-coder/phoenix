@@ -13,7 +13,7 @@ const getMatchHistory = async (req, res) => {
 
     if (filter === 'wins') query = query.eq('winner_id', req.user.id);
     else if (filter === 'draws') query = query.eq('result', 'draw');
-    else if (filter === 'losses') query = query.neq('result', 'draw').neq('winner_id', req.user.id);
+    else if (filter === 'losses') query = query.neq('result', 'draw').neq('winner_id', req.user.id).not('winner_id', 'is', null).or(`player1_id.eq.${req.user.id},player2_id.eq.${req.user.id}`);
 
     const { data, count } = await query;
 
@@ -81,7 +81,7 @@ const processMatchResult = async (matchId, result, winnerId, finalFen = null) =>
     const { data: match } = await supabase.from('matches').select('*').eq('id', matchId).single();
     if (!match || match.status === 'finished') return;
 
-    const IQ_WIN = 15, IQ_LOSS = -5, IQ_DRAW = 10;
+    const IQ_WIN = 15, IQ_LOSS = -5, IQ_DRAW = 0;
     const p1Win = result === 'player1_win';
     const p2Win = result === 'player2_win';
     const isDraw = result === 'draw';
@@ -109,7 +109,7 @@ const processMatchResult = async (matchId, result, winnerId, finalFen = null) =>
       const newBestStreak = Math.max(p.best_streak, newStreak);
       const newIQ = Math.max(0, p.iq_level + iqChange);
       const newRank = newIQ >= 2000 ? 'Platinum' : newIQ >= 1000 ? 'Gold' : newIQ >= 500 ? 'Silver' : 'Bronze';
-      const newWinRate = Math.round((newWins / newTotal) * 100);
+      const newWinRate = Math.round(((newWins + (0.5 * newDraws)) / newTotal) * 100);
 
       await supabase.from('profiles').update({
         iq_level: newIQ, rank: newRank,
@@ -160,10 +160,9 @@ const processMatchResult = async (matchId, result, winnerId, finalFen = null) =>
            const matchPts1 = p1Win ? 10 : isDraw ? 5 : 0;
            const matchPts2 = p2Win ? 10 : isDraw ? 5 : 0;
            
-           // Assuming player1_id is white and player2_id is black based on the socket implementation
-           // However, socket.js emits 'white' to p1. This matches the standard mapping.
-           scoreChange1 = matchPts1 + wCapPoints;
-           scoreChange2 = matchPts2 + bCapPoints;
+           const isP1White = match.player1_color !== 'black';
+           scoreChange1 = matchPts1 + (isP1White ? wCapPoints : bCapPoints);
+           scoreChange2 = matchPts2 + (isP1White ? bCapPoints : wCapPoints);
        }
 
       if (match.player1_id) {
@@ -180,4 +179,26 @@ const processMatchResult = async (matchId, result, winnerId, finalFen = null) =>
   }
 };
 
-module.exports = { getMatchHistory, getLeaderboard, getMatchById, processMatchResult };
+const saveBotMatch = async (req, res) => {
+  try {
+    const { result, fen } = req.body;
+    const matchData = {
+      player1_id: req.user.id,
+      player2_id: null, // No opponent
+      player1_color: 'white',
+      match_type: 'bot',
+      timer_type: 0,
+      status: 'active',
+      start_time: new Date().toISOString(),
+    };
+    const { data: match, error } = await supabase.from('matches').insert(matchData).select().single();
+    if (error || !match) return res.status(500).json({ success: false, message: 'DB Error' });
+    
+    await processMatchResult(match.id, result, result === 'player1_win' ? req.user.id : null, fen);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+module.exports = { getMatchHistory, getLeaderboard, getMatchById, processMatchResult, saveBotMatch };

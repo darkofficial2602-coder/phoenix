@@ -38,7 +38,9 @@ const getUsers = async (req, res) => {
       if (!searchTerm.startsWith('@') && !searchTerm.startsWith('PX-')) {
         searchTerm = '@' + searchTerm;
       }
-      query = query.or(`username.ilike.%${searchTerm}%,player_id.ilike.%${search}%`);
+      const safeTerm = searchTerm.replace(/[%_\\]/g, '\\$&');
+      const safeSearch = search.trim().replace(/[%_\\]/g, '\\$&');
+      query = query.or(`username.ilike.%${safeTerm}%,player_id.ilike.%${safeSearch}%`);
     }
     const { data, count } = await query;
     res.json({ success: true, users: data || [], total: count, pages: Math.ceil((count || 0) / limit) });
@@ -50,6 +52,9 @@ const getUsers = async (req, res) => {
 const updateUserStatus = async (req, res) => {
   try {
     const { status } = req.body;
+    if (!['active', 'banned', 'suspended'].includes(status)) {
+        return res.status(400).json({ success: false, message: 'Invalid status provided.' });
+    }
     const { data, error } = await supabase.from('profiles').update({ status }).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ success: false, message: error.message });
     await supabase.from('notifications').insert({ user_id: req.params.id, type: 'account', title: `Account ${status}`, message: `Your account has been ${status} by admin.` });
@@ -63,20 +68,11 @@ const getPendingKYC = async (req, res) => {
   try {
     const { data: kycs } = await supabase
       .from('kyc')
-      .select('*')
+      .select('*, profiles(username, email, player_id)')
       .eq('status', 'pending')
       .order('created_at', { ascending: true });
 
-    const result = await Promise.all((kycs || []).map(async (k) => {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('username, email, player_id')
-        .eq('id', k.user_id)
-        .single();
-      return { ...k, profiles: profile };
-    }));
-
-    res.json({ success: true, kycs: result });
+    res.json({ success: true, kycs: kycs || [] });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error.' });
   }
@@ -177,10 +173,12 @@ const processWithdraw = async (req, res) => {
       await supabase.from('withdraw_requests').update({ status: 'rejected', rejection_reason: rejection_reason || '', processed_by: req.user.id, processed_at: new Date().toISOString() }).eq('id', req.params.id);
       // Refund coins + undo the total_withdrawn since request was rejected
       const { data: wallet } = await supabase.from('wallets').select('balance, total_withdrawn').eq('user_id', wr.user_id).single();
-      await supabase.from('wallets').update({ 
-        balance: Number(wallet.balance) + Number(wr.amount),
-        total_withdrawn: Math.max(0, Number(wallet.total_withdrawn || 0) - Number(wr.amount))
-      }).eq('user_id', wr.user_id);
+      if (wallet) {
+          await supabase.from('wallets').update({ 
+            balance: Number(wallet.balance) + Number(wr.amount),
+            total_withdrawn: Math.max(0, Number(wallet.total_withdrawn || 0) - Number(wr.amount))
+          }).eq('user_id', wr.user_id);
+      }
       await supabase.from('transactions').update({ status: 'failed' }).eq('reference_id', req.params.id).eq('type', 'withdraw');
       await supabase.from('notifications').insert({ user_id: wr.user_id, type: 'withdraw', title: 'Withdrawal Rejected ❌', message: `${wr.amount} coins refunded. Reason: ${rejection_reason || 'N/A'}` });
     }
@@ -249,8 +247,8 @@ const cancelTournament = async (req, res) => {
     const { id } = req.params;
     const { data: tourney } = await supabase.from('tournaments').select('*').eq('id', id).single();
     if (!tourney) return res.status(404).json({ success: false, message: 'Not found.' });
-    if (tourney.status === 'completed' || tourney.status === 'cancelled') 
-      return res.status(400).json({ success: false, message: 'Already ended.' });
+    if (['completed', 'cancelled', 'live'].includes(tourney.status)) 
+      return res.status(400).json({ success: false, message: 'Cannot cancel a completed, cancelled, or live tournament.' });
 
     await supabase.from('tournaments').update({ status: 'cancelled' }).eq('id', id);
 
@@ -258,10 +256,11 @@ const cancelTournament = async (req, res) => {
       const { data: players } = await supabase.from('tournament_players').select('user_id').eq('tournament_id', id);
       if (players && players.length > 0) {
         for (const p of players) {
-          const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', p.user_id).single();
+          const { data: wallet } = await supabase.from('wallets').select('balance, total_spent').eq('user_id', p.user_id).single();
           if (wallet) {
               const newBalance = Number(wallet.balance) + tourney.entry_fee;
-              await supabase.from('wallets').update({ balance: newBalance }).eq('user_id', p.user_id);
+              const newTotalSpent = Math.max(0, Number(wallet.total_spent || 0) - tourney.entry_fee);
+              await supabase.from('wallets').update({ balance: newBalance, total_spent: newTotalSpent }).eq('user_id', p.user_id);
               await supabase.from('transactions').insert({
                 user_id: p.user_id, type: 'refund', amount: tourney.entry_fee, 
                 status: 'success', reference_id: id, description: `Refund: ${tourney.name}`,

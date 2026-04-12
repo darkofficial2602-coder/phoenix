@@ -24,8 +24,8 @@
     .result-iq { font-size: 16px; color: var(--text-secondary); margin-bottom: 24px; }
     #board { width: min(500px, 90vw); }
     .highlight-selected { background: rgba(255, 107, 53, 0.4) !important; }
-    .highlight-move { background: rgba(91,192,235, 0.4) !important; cursor: pointer; }
-    .highlight-move::after { content:''; display:block; width:20px; height:20px; background:rgba(0,0,0,0.2); border-radius:50%; margin:auto; transform:translateY(15px); }
+    .highlight-move { cursor: pointer; position: relative; }
+    .highlight-move::after { content:''; display:block; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:30%; height:30%; background:rgba(0,0,0,0.2); border-radius:50%; }
     .chat-card { display: flex; flex-direction: column; flex: 1; max-height: 280px; }
     .chat-messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.02); border-radius: 8px; font-size: 12px; }
     .chat-messages::-webkit-scrollbar { width: 3px; }
@@ -96,14 +96,7 @@
             <div class="move-list" id="move-list"></div>
           </div>
 
-          <div class="card">
-            <div class="card-title">Game Status</div>
-            <div id="game-status" style="font-size:13px;color:var(--text-secondary)">Waiting for opponent...</div>
-            <div style="margin-top:12px;font-size:12px;color:var(--text-muted)">
-              <div>Mode: <span id="info-mode" style="color:#5bc0eb">-</span></div>
-              <div style="margin-top:4px">Color: <span id="info-color" style="color:#5bc0eb">-</span></div>
-            </div>
-          </div>
+          <!-- Game Status Removed -->
 
           <div class="card" id="bot-thinking" style="display:none">
             <div style="display:flex;align-items:center;gap:12px">
@@ -207,7 +200,7 @@ function executeMove(from, to, promotion) {
     document.getElementById('bot-thinking').style.display = 'block';
     
     // Use setTimeout so the UI can render the "thinking" spinner before the heavy minimax thread blocks execution
-    setTimeout(makeBotMove, 100);
+    setTimeout(makeBotMove, 1500);
   } else {
     SocketActions.makeMove(matchId, { from: move.from, to: move.to, promotion }, user.id);
     if (chess.game_over()) showResult();
@@ -251,6 +244,9 @@ if (mode === 'bot') {
 function initBoard() {
   board = Chessboard('board', {
     draggable: true,
+    moveSpeed: 'slow',
+    snapbackSpeed: 500,
+    snapSpeed: 100,
     position: 'start',
     orientation: myColor,
     pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
@@ -536,19 +532,31 @@ function showResult(reason) {
   const iqEl = document.getElementById('result-iq');
   overlay.classList.add('active');
 
+  let resolveResult = 'draw';
   if (reason === 'timeout_loss') {
     icon.innerHTML = '<i class="fa-solid fa-clock"></i>'; title.textContent = 'Time\'s Up!'; title.style.color = 'var(--error)'; iqEl.textContent = '-5 IQ';
+    resolveResult = 'player2_win';
   } else if (chess.in_checkmate()) {
     const myColorChar = myColor === 'white' ? 'w' : 'b';
     if (chess.turn() !== myColorChar) {
       icon.innerHTML = '<i class="fa-solid fa-trophy"></i>'; title.textContent = 'You Won!'; title.style.color = '#5bc0eb'; iqEl.textContent = '+15 IQ';
+      resolveResult = 'player1_win';
     } else {
       icon.innerHTML = '<i class="fa-solid fa-face-frown"></i>'; title.textContent = 'You Lost!'; title.style.color = 'var(--error)'; iqEl.textContent = '-5 IQ';
+      resolveResult = 'player2_win';
     }
   } else if (chess.in_draw() || chess.in_stalemate()) {
     icon.innerHTML = '<i class="fa-solid fa-handshake"></i>'; title.textContent = 'Draw!'; title.style.color = 'var(--text-secondary)'; iqEl.textContent = '+10 IQ';
+    resolveResult = 'draw';
+  } else if (reason === 'resign') {
+    icon.innerHTML = '<i class="fa-solid fa-flag-checkered"></i>'; title.textContent = 'You Resigned'; iqEl.textContent = '-5 IQ';
+    resolveResult = 'player2_win';
   } else {
     icon.innerHTML = '<i class="fa-solid fa-flag-checkered"></i>'; title.textContent = 'Game Over'; iqEl.textContent = '';
+  }
+
+  if (mode === 'bot') {
+    GameAPI.saveBotMatch(resolveResult, chess.fen());
   }
 }
 

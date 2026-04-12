@@ -174,6 +174,7 @@
         display: none
       }
 
+
       .auth-right {
         padding: 32px 24px
       }
@@ -244,28 +245,25 @@
           <input type="email" id="r-email" class="input" placeholder="player@email.com" required>
         </div>
         <div class="input-group">
-          <label class="input-label">Password <span style="color:var(--text-muted);font-size:11px">(min 6
-              chars)</span></label>
+          <label class="input-label">Password <span style="color:var(--text-muted);font-size:11px">(min 6 chars)</span></label>
           <input type="password" id="r-pass" class="input" placeholder="Minimum 6 characters" required minlength="6">
         </div>
         <div class="input-group">
-          <label class="input-label">Phone <span
-              style="color:var(--text-muted);font-size:11px">(optional)</span></label>
+          <label class="input-label">Phone <span style="color:var(--text-muted);font-size:11px">(optional)</span></label>
           <input type="tel" id="r-phone" class="input" placeholder="+91 9876543210">
         </div>
-        <button type="submit" class="btn btn-primary btn-full btn-lg" id="register-btn">Create Account</button>
+        <button type="submit" class="btn btn-primary btn-full btn-lg" id="register-btn" style="margin-top:8px">Create Account</button>
         <div id="register-err" class="error-msg" style="margin-top:12px;text-align:center"></div>
       </form>
 
       <!-- OAuth Logins -->
-      <div style="margin-top:20px">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <div style="margin-top:24px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
           <div style="flex:1;height:1px;background:var(--border)"></div>
           <span style="font-size:12px;color:var(--text-muted)">OR</span>
           <div style="flex:1;height:1px;background:var(--border)"></div>
         </div>
-        <button type="button" class="btn btn-secondary btn-full btn-lg" id="google-btn" onclick="doGoogleLogin()"
-          style="gap:10px">
+        <button type="button" class="btn btn-secondary btn-full btn-lg" id="google-btn" onclick="doGoogleLogin()">
           <svg width="18" height="18" viewBox="0 0 48 48">
             <path fill="#EA4335"
               d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
@@ -277,16 +275,6 @@
               d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
           </svg>
           Sign in with Google
-        </button>
-        <button type="button" class="btn btn-secondary btn-full btn-lg" id="microsoft-btn" onclick="doMicrosoftLogin()"
-          style="gap:10px; margin-top: 10px;">
-          <svg width="18" height="18" viewBox="0 0 21 21">
-            <path fill="#f25022" d="M0 0h10v10H0z" />
-            <path fill="#7fba00" d="M11 0h10v10H11z" />
-            <path fill="#00a4ef" d="M0 11h10v10H0z" />
-            <path fill="#ffb900" d="M11 11h10v10H11z" />
-          </svg>
-          Sign in with Microsoft
         </button>
       </div>
 
@@ -304,8 +292,8 @@
     requireGuest();
 
     // Initialize Supabase client for Google OAuth
-    const SUPABASE_URL = 'https://dlerpjszjqlgdrpestqi.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsZXJwanN6anFsZ2RycGVzdHFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NjMyMzksImV4cCI6MjA5MTEzOTIzOX0.NGl_6RPhzV6i9JG4m2Z5XjaL_1FprUSwBN_awrzHytI';
+    const SUPABASE_URL = 'https://jxzalgpvuamfmoysvkkz.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4emFsZ3B2dWFtZm1veXN2a2t6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4Mzk2NTQsImV4cCI6MjA5MTQxNTY1NH0.MUETN8hl0l4S0gPJV9nlwSKQfJWcsntrmIb7No-vXN8';
     const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     function switchTab(tab, btn) {
@@ -335,12 +323,11 @@
       const btn = document.getElementById('register-btn');
       btn.disabled = true; btn.textContent = 'Creating...';
 
-      // Normalize @username: strip spaces, ensure single @ prefix
+      // Normalize @username
       let rawUser = document.getElementById('r-user').value.trim().replace(/\s+/g, '');
       rawUser = rawUser.replace(/^@+/, '');
       rawUser = '@' + rawUser;
 
-      // Validate @username format
       if (!/^@[a-z0-9_]{4,20}$/.test(rawUser)) {
         document.getElementById('register-err').textContent = 'Username must be @username: 4-20 chars (a-z, 0-9, _), no spaces.';
         btn.disabled = false; btn.textContent = 'Create Account';
@@ -356,7 +343,7 @@
       });
       if (res?.success) {
         setSession(res.token, res.refresh_token, res.user);
-        Toast.success('Account created! Welcome to PHOENIX X! <i class="fa-solid fa-chess-king"></i>');
+        Toast.success('Account created! Welcome to PHOENIX X!');
         setTimeout(() => window.location.href = '/pages/dashboard.html', 700);
       } else {
         document.getElementById('register-err').textContent = res?.message || 'Registration failed.';
@@ -387,33 +374,8 @@
       }
     }
 
-    async function doMicrosoftLogin() {
-      const btn = document.getElementById('microsoft-btn');
-      btn.disabled = true; btn.textContent = 'Connecting to Microsoft...';
-
-      try {
-        const { data, error } = await sbClient.auth.signInWithOAuth({
-          provider: 'azure',
-          options: {
-            redirectTo: window.location.origin + '/pages/login.html',
-          },
-        });
-        if (error) {
-          Toast.error(error.message || 'Microsoft login failed.');
-          btn.disabled = false; btn.innerHTML = svgMicrosoft() + ' Sign in with Microsoft';
-        }
-      } catch (err) {
-        Toast.error('Failed to connect to Microsoft.');
-        btn.disabled = false; btn.innerHTML = svgMicrosoft() + ' Sign in with Microsoft';
-      }
-    }
-
     function svgGoogle() {
       return '<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59a14.5 14.5 0 0 1 0-9.18l-7.98-6.19a24.08 24.08 0 0 0 0 21.56l7.98-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
-    }
-
-    function svgMicrosoft() {
-      return '<svg width="18" height="18" viewBox="0 0 21 21"><path fill="#f25022" d="M0 0h10v10H0z"/><path fill="#7fba00" d="M11 0h10v10H11z"/><path fill="#00a4ef" d="M0 11h10v10H0z"/><path fill="#ffb900" d="M11 11h10v10H11z"/></svg>';
     }
 
     // ─── HANDLE OAUTH CALLBACK ──────────────────────────────

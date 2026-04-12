@@ -14,8 +14,8 @@ const getWallet = async (req, res) => {
 const createDepositOrder = async (req, res) => {
   try {
     if (req.user.kyc_status !== 'verified') return res.status(403).json({ success: false, message: 'KYC required to use wallet.' });
-    const { amount } = req.body;
-    if (!amount || amount < 10) return res.status(400).json({ success: false, message: 'Minimum deposit is ₹10.' });
+    const amount = Number(req.body.amount);
+    if (!amount || isNaN(amount) || amount < 10) return res.status(400).json({ success: false, message: 'Minimum deposit is ₹10.' });
 
     const order = await createOrder(amount);
 
@@ -38,17 +38,25 @@ const verifyDeposit = async (req, res) => {
     const isValid = verifyPaymentSignature(razorpay_order_id, razorpay_payment_id, razorpay_signature);
     if (!isValid) return res.status(400).json({ success: false, message: 'Payment verification failed.' });
 
-    // Find pending transaction
-    const { data: txn } = await supabase.from('transactions').select('*').eq('razorpay_order_id', razorpay_order_id).eq('status', 'pending').maybeSingle();
-    if (!txn) return res.status(400).json({ success: false, message: 'Transaction not found.' });
+    // ATOMIC LOCK: Claim the pending transaction
+    const { data: txn, error: lockErr } = await supabase.from('transactions')
+      .update({ status: 'processing', razorpay_payment_id })
+      .eq('razorpay_order_id', razorpay_order_id)
+      .eq('status', 'pending')
+      .select()
+      .maybeSingle();
 
-    // Credit wallet
+    if (!txn || lockErr) return res.status(400).json({ success: false, message: 'Transaction already verified or not found.' });
+
+    // Credit wallet safely now that we own the lock
     const { data: wallet } = await supabase.from('wallets').select('balance, total_deposited').eq('user_id', txn.user_id).single();
+    if (!wallet) return res.status(400).json({ success: false, message: 'Wallet not found.' });
     const newBalance = Number(wallet.balance) + Number(txn.amount);
+    
     await supabase.from('wallets').update({ balance: newBalance, total_deposited: Number(wallet.total_deposited) + Number(txn.amount) }).eq('user_id', txn.user_id);
 
-    // Update transaction
-    await supabase.from('transactions').update({ status: 'success', razorpay_payment_id, balance_after: newBalance }).eq('id', txn.id);
+    // Finalize transaction
+    await supabase.from('transactions').update({ status: 'success', balance_after: newBalance }).eq('id', txn.id);
 
     // Notification
     await supabase.from('notifications').insert({ user_id: txn.user_id, type: 'deposit', title: 'Deposit Successful ✅', message: `₹${txn.amount} credited to your wallet as ${txn.amount} coins.` });
@@ -84,14 +92,21 @@ const requestWithdraw = async (req, res) => {
     const newBalance = Number(wallet.balance) - amount;
     const newWithdrawn = Number(wallet.total_withdrawn || 0) + amount;
 
-    // Balance deduct பண்ணு
-    await supabase
+    // Balance deduct using Optimistic Concurrency Control (OCC) Atomic Lock
+    const { data: updatedWallet, error: updateErr } = await supabase
       .from('wallets')
       .update({ 
         balance: newBalance,
         total_withdrawn: newWithdrawn
       })
-      .eq('user_id', req.user.id);
+      .eq('user_id', req.user.id)
+      .eq('balance', wallet.balance) // Strict version check
+      .select()
+      .maybeSingle();
+
+    if (updateErr || !updatedWallet) {
+        return res.status(409).json({ success: false, message: 'Account balance was modified during withdrawal. Please try again.' });
+    }
 
     // Queue position
     const { count } = await supabase
@@ -102,7 +117,7 @@ const requestWithdraw = async (req, res) => {
     const queuePos = (count || 0) + 1;
 
     // Withdraw request create
-    const { data: wr } = await supabase
+    const { data: wr, error: wrErr } = await supabase
       .from('withdraw_requests')
       .insert({ 
         user_id: req.user.id, 
@@ -111,6 +126,15 @@ const requestWithdraw = async (req, res) => {
       })
       .select()
       .single();
+
+    if (wrErr || !wr) {
+        // CRITICAL COMPENSATING TRANSACTION: Refund wallet because WR insertion crashed!
+        await supabase.from('wallets').update({ 
+            balance: Number(wallet.balance),
+            total_withdrawn: Number(wallet.total_withdrawn || 0)
+        }).eq('user_id', req.user.id);
+        return res.status(500).json({ success: false, message: 'Failed to submit withdrawal request. Coins have been securely refunded.' });
+    }
 
     // Transaction record
     await supabase.from('transactions').insert({ 

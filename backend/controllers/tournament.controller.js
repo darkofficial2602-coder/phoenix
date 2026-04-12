@@ -52,19 +52,40 @@ const joinTournament = async (req, res) => {
 
       const newBalance = Number(wallet.balance) - tournament.entry_fee;
       const newTotalSpent = Number(wallet.total_spent || 0) + tournament.entry_fee;
-      await supabase.from('wallets').update({ balance: newBalance, total_spent: newTotalSpent }).eq('user_id', req.user.id);
+      const { data: lockedWallet } = await supabase.from('wallets')
+          .update({ balance: newBalance, total_spent: newTotalSpent })
+          .eq('user_id', req.user.id)
+          .eq('balance', wallet.balance)
+          .select().maybeSingle();
+      
+      if (!lockedWallet) return res.status(400).json({ success: false, message: 'Transaction blocked due to concurrent processing. Try again.' });
+
       await supabase.from('transactions').insert({ user_id: req.user.id, type: 'tournament_entry', amount: tournament.entry_fee, status: 'success', reference_id: tournament.id, balance_after: newBalance });
     }
 
     // Add player
-    await supabase.from('tournament_players').insert({ tournament_id: req.params.id, user_id: req.user.id });
-    await supabase.from('tournaments').update({ current_players: tournament.current_players + 1 }).eq('id', req.params.id);
+    const { error: joinErr } = await supabase.from('tournament_players').insert({ tournament_id: req.params.id, user_id: req.user.id });
+    if (joinErr) {
+       if (tournament.type === 'paid') {
+          // Compensating transaction for failed insert
+          const { data: refundWallet } = await supabase.from('wallets').select('balance, total_spent').eq('user_id', req.user.id).single();
+          if (refundWallet) {
+              const rb = Number(refundWallet.balance) + tournament.entry_fee;
+              const rs = Number(refundWallet.total_spent || 0) - tournament.entry_fee;
+              await supabase.from('wallets').update({ balance: rb, total_spent: rs }).eq('user_id', req.user.id);
+              await supabase.from('transactions').insert({ user_id: req.user.id, type: 'refund', amount: tournament.entry_fee, status: 'success', description: 'Tournament insert failed, refunded entry fee', balance_after: rb });
+          }
+       }
+       return res.status(400).json({ success: false, message: 'Failed to join tournament. Refunded if paid.' });
+    }
+    
+    await supabase.rpc('increment_tournament_players', { t_id: req.params.id });
 
     await supabase.from('notifications').insert({ user_id: req.user.id, type: 'tournament_join', title: 'Joined Tournament! 🏆', message: `You've joined "${tournament.name}". Get ready to play!` });
 
     // PAID TOURNAMENT AUTO-LIVE TRIGGER
-    const updatedPlayers = tournament.current_players + 1;
-    if (tournament.type === 'paid' && updatedPlayers >= tournament.max_players) {
+    const { data: latestT } = await supabase.from('tournaments').select('current_players, max_players').eq('id', tournament.id).single();
+    if (tournament.type === 'paid' && latestT && latestT.current_players >= latestT.max_players) {
         // Set start time to exactly 2 minutes from now. 
         // The updateTournamentStatuses loop will switch it to 'live' when this time is reached.
         const liveTime = new Date(Date.now() + 2 * 60000).toISOString();
@@ -123,7 +144,7 @@ const autoCreateFreeTournaments = async (customStartTime, customEndTime) => {
     if (existing && existing.length > 0) return;
 
     const rows = timers.map(t => ({
-      name: `Free ${t}min Tournament`, type: 'free', timer_type: t,
+      name: `Free ${t}min Tournament`, type: 'free', format: 'standard', timer_type: t,
       max_players: 500, start_time: startTime, end_time: endTime, duration_minutes: 30,
     }));
     await supabase.from('tournaments').insert(rows);
@@ -140,9 +161,9 @@ const autoCreatePaidTournaments = async () => {
     const now = Date.now();
     const intervals = { 1: 5 * 60000, 3: 20 * 60000, 5: 30 * 60000 };
     const configs = [
-      { type: 1, timer: 1, max: 16, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 500], name: '1 Min Knockout TR' },
-      { type: 2, timer: 3, max: 32, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 500], name: '3 Min Knockout TR' },
-      { type: 3, timer: 5, max: 100, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 500], name: '5 Min Hybrid TR' }
+      { timer: 1, max: 16, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 500], name: '1 Min Knockout TR' },
+      { timer: 3, max: 32, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 500], name: '3 Min Knockout TR' },
+      { timer: 5, max: 100, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 500], name: '5 Min Hybrid TR' }
     ];
     
     for (const conf of configs) {
@@ -327,9 +348,6 @@ const updateTournamentStatuses = async () => {
     if (completing && completing.length > 0) {
       for (const t of completing) {
         await supabase.from('tournaments').update({ status: 'completed', phase: 'completed' }).eq('id', t.id);
-        if (t.type === 'paid') {
-          await distributeTournamentPrizes(t);
-        }
       }
     }
   } catch (err) {
@@ -337,4 +355,4 @@ const updateTournamentStatuses = async () => {
   }
 };
 
-module.exports = { getTournaments, getTournamentById, joinTournament, getLeaderboard, autoCreateFreeTournaments, autoCreatePaidTournaments, updateTournamentStatuses };
+module.exports = { getTournaments, getTournamentById, joinTournament, getLeaderboard, autoCreateFreeTournaments, autoCreatePaidTournaments, updateTournamentStatuses, distributeTournamentPrizes };

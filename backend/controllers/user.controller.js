@@ -83,8 +83,19 @@ const submitKYC = async (req, res) => {
 
 const changePassword = async (req, res) => {
   try {
-    const { new_password } = req.body;
-    if (!new_password || new_password.length < 6) return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+    const { old_password, new_password } = req.body;
+    if (!old_password || !new_password || new_password.length < 6) return res.status(400).json({ success: false, message: 'Current password and new password (min 6 chars) required.' });
+    
+    // Fetch email to use in signInWithPassword via Admin API since user might not be in req session exactly
+    const { data: { user: adminUser }, error: userErr } = await supabase.auth.admin.getUserById(req.user.id);
+    if (userErr || !adminUser) return res.status(400).json({ success: false, message: 'Auth session invalid.' });
+
+    // Verify old password by attempting signin
+    const { createClient } = require('@supabase/supabase-js');
+    const tempClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+    const { error: signInError } = await tempClient.auth.signInWithPassword({ email: adminUser.email, password: old_password });
+    if (signInError) return res.status(401).json({ success: false, message: 'Incorrect current password.' });
+
     const { error } = await supabase.auth.admin.updateUserById(req.user.id, { password: new_password });
     if (error) return res.status(400).json({ success: false, message: error.message });
     res.json({ success: true, message: 'Password changed successfully.' });
@@ -96,7 +107,36 @@ const changePassword = async (req, res) => {
 const updateSettings = async (req, res) => {
   try {
     const { settings } = req.body;
-    const { error } = await supabase.from('profiles').update({ settings }).eq('id', req.user.id);
+    if (!settings || typeof settings !== 'object') return res.status(400).json({ success: false, message: 'Invalid settings format.' });
+
+    const sanitized = {
+      theme: settings.theme === 'light' ? 'light' : 'dark',
+      highlight_moves: !!settings.highlight_moves,
+      legal_moves: !!settings.legal_moves,
+      premoves: !!settings.premoves,
+      result_animation: !!settings.result_animation,
+      chat_enabled: !!settings.chat_enabled,
+      language: typeof settings.language === 'string' ? settings.language.substring(0, 5) : 'en',
+      challenge_mode: typeof settings.challenge_mode === 'string' ? settings.challenge_mode.substring(0, 20) : 'auto_accept'
+    };
+
+    if (settings.notifications && typeof settings.notifications === 'object') {
+       sanitized.notifications = {
+         match_found: !!settings.notifications.match_found,
+         tournament: !!settings.notifications.tournament,
+         friend_request: !!settings.notifications.friend_request
+       };
+    }
+    
+    if (settings.privacy && typeof settings.privacy === 'object') {
+       sanitized.privacy = {
+         online_status: !!settings.privacy.online_status,
+         visibility: typeof settings.privacy.visibility === 'string' ? settings.privacy.visibility.substring(0, 10) : 'public',
+         friend_requests: typeof settings.privacy.friend_requests === 'string' ? settings.privacy.friend_requests.substring(0, 20) : 'everyone'
+       };
+    }
+
+    const { error } = await supabase.from('profiles').update({ settings: sanitized }).eq('id', req.user.id);
     if (error) return res.status(400).json({ success: false, message: error.message });
     res.json({ success: true, message: 'Settings saved.' });
   } catch (err) {

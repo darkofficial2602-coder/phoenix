@@ -461,7 +461,7 @@ async function saveProfile() {
   if (res?.success) {
     document.getElementById('profile-save-msg').innerHTML = '<i class="fa-solid fa-check"></i> Saved!';
     setTimeout(() => document.getElementById('profile-save-msg').textContent = '', 2000);
-    const updatedUser = { ...user, username: res.user.username };
+    const updatedUser = { ...user, ...res.user };
     localStorage.setItem('px_user', JSON.stringify(updatedUser));
     Toast.success('Profile updated!');
   } else Toast.error(res?.message || 'Failed to save.');

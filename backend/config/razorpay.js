@@ -23,10 +23,10 @@ const verifyPaymentSignature = (orderId, paymentId, signature) => {
   return expected === signature;
 };
 
-const verifyWebhookSignature = (body, signature) => {
+const verifyWebhookSignature = (bodyString, signature) => {
   const expected = crypto
     .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || 'placeholder')
-    .update(JSON.stringify(body))
+    .update(bodyString)
     .digest('hex');
   return expected === signature;
 };

@@ -19,34 +19,39 @@ const io     = new Server(server, {
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
 app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// ─── STATIC FRONTEND ─────────────────────────────────────
-app.use(express.static(path.join(__dirname, '../frontend')));
-
-// ─── API ROUTES ───────────────────────────────────────────
-app.use('/api/auth',        require('./routes/auth.routes'));
-app.use('/api/user',        require('./routes/user.routes').userRouter);
-app.use('/api/wallet',      require('./routes/wallet.routes'));
-app.use('/api/tournaments', require('./routes/tournament.routes'));
-app.use('/api/game',        require('./routes/game.routes').gameRouter);
-app.use('/api/admin',       require('./routes/game.routes').adminRouter);
-app.use('/api/friends',     require('./routes/friend.routes'));
-
-// ─── HEALTH CHECK ─────────────────────────────────────────
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', platform: 'PHOENIX X', db: 'Supabase', timestamp: new Date() });
-});
 
 // ─── RAZORPAY WEBHOOK ────────────────────────────────────
-app.post('/api/webhook/razorpay', express.raw({ type: 'application/json' }), (req, res) => {
+app.post('/api/webhook/razorpay', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     const { verifyWebhookSignature } = require('./config/razorpay');
+    const { supabase } = require('./config/supabase');
     const sig = req.headers['x-razorpay-signature'];
-    const body = JSON.parse(req.body);
-    if (verifyWebhookSignature(body, sig)) {
+    const bodyString = req.body.toString('utf8');
+    const body = JSON.parse(bodyString);
+    if (verifyWebhookSignature(bodyString, sig)) {
       console.log('✅ Razorpay webhook verified:', body.event);
+      if (body.event === 'payment.captured' || body.event === 'payment.authorized') {
+         const entity = body.payload.payment.entity;
+         const depositId = entity.notes?.deposit_id;
+         if (depositId) {
+            // ATOMIC LOCK: Claim the pending transaction
+            const { data: txn } = await supabase.from('transactions')
+               .update({ status: 'processing', reference_id: entity.id })
+               .eq('id', depositId)
+               .eq('status', 'pending')
+               .select()
+               .maybeSingle();
+
+            if (txn) {
+               const { data: wallet } = await supabase.from('wallets').select('balance, total_deposited').eq('user_id', txn.user_id).single();
+               if (wallet) {
+                  const newBalance = Number(wallet.balance) + Number(txn.amount);
+                  await supabase.from('wallets').update({ balance: newBalance, total_deposited: (Number(wallet.total_deposited) || 0) + Number(txn.amount) }).eq('user_id', txn.user_id);
+                  await supabase.from('transactions').update({ status: 'success', balance_after: newBalance }).eq('id', depositId);
+               }
+            }
+         }
+      }
     }
     res.json({ success: true });
   } catch (err) {
@@ -55,8 +60,31 @@ app.post('/api/webhook/razorpay', express.raw({ type: 'application/json' }), (re
   }
 });
 
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+app.use('/api/auth',        require('./routes/auth.routes'));
+app.use('/api/user',        require('./routes/user.routes').userRouter);
+app.use('/api/wallet',      require('./routes/wallet.routes'));
+app.use('/api/tournaments', require('./routes/tournament.routes'));
+app.use('/api/game',        require('./routes/game.routes').gameRouter);
+app.use('/api/admin',       require('./routes/admin.routes'));
+app.use('/api/friends',     require('./routes/friend.routes'));
+
+// ─── HEALTH CHECK ─────────────────────────────────────────
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', platform: 'PHOENIX X', db: 'Supabase', timestamp: new Date() });
+});
+
 // ─── SOCKET.IO ────────────────────────────────────────────
-require('../socket/socket')(io);
+require(path.join(__dirname, './socket/socket'))(io);
+
+// ─── TOURNAMENT MANAGER ────────────────────────────────────
+const TournamentManager = require('./services/tournament.manager');
+TournamentManager.init(io);
+
+// ─── STATIC FRONTEND ─────────────────────────────────────
+app.use(express.static(path.join(__dirname, '../frontend')));
 
 // ─── SCHEDULERS ───────────────────────────────────────────
 const { autoCreateFreeTournaments, autoCreatePaidTournaments, updateTournamentStatuses } = require('./controllers/tournament.controller');
