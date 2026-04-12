@@ -462,7 +462,8 @@ function updatePlayerBar() {
   const myTurn = chess.turn() === myColorChar;
   document.getElementById('my-bar').classList.toggle('active', myTurn);
   document.getElementById('opponent-bar').classList.toggle('active', !myTurn);
-  document.getElementById('game-status').innerHTML = myTurn ? '<i class="fa-solid fa-circle" style="color:var(--success);"></i> Your turn' : '⏳ Opponent\'s turn';
+  const statusEl = document.getElementById('game-status');
+  if (statusEl) statusEl.innerHTML = myTurn ? '<i class="fa-solid fa-circle" style="color:var(--success);"></i> Your turn' : '⏳ Opponent\'s turn';
 
   const init = { p: 8, n: 2, b: 2, r: 2, q: 1 };
   const cur = { w: { p:0, n:0, b:0, r:0, q:0 }, b: { p:0, n:0, b:0, r:0, q:0 } };
@@ -740,8 +741,12 @@ if (mode === 'bot') {
   }
 }
 
-document.getElementById('game-status').innerHTML = myColor === 'white' ? '<i class="fa-solid fa-circle" style="color:var(--success);"></i> Your turn (White)' : '⏳ Waiting (Black)';
-document.getElementById('game-title').innerHTML = mode === 'bot' ? `<i class="fa-solid fa-chess-pawn"></i> vs Bot (IQ ${botIQ})` : '<i class="fa-solid fa-chess-pawn"></i> LIVE GAME';
+const statusElem = document.getElementById('game-status');
+if (statusElem) statusElem.innerHTML = myColor === 'white' ? '<i class="fa-solid fa-circle" style="color:var(--success);"></i> Your turn (White)' : '⏳ Waiting (Black)';
+
+const titleElem = document.getElementById('game-title');
+if (titleElem) titleElem.innerHTML = mode === 'bot' ? `<i class="fa-solid fa-chess-pawn"></i> vs Bot (IQ ${botIQ})` : '<i class="fa-solid fa-chess-pawn"></i> LIVE GAME';
+
 Toast.info(mode === 'bot' ? `Playing vs Bot (IQ ${botIQ})` : 'Game started! Good luck!');
 
 // ─── ANTI-CHEAT DETECTION ───
