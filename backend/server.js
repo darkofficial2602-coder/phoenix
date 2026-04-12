@@ -59,13 +59,19 @@ app.post('/api/webhook/razorpay', express.raw({ type: 'application/json' }), (re
 require('../socket/socket')(io);
 
 // ─── SCHEDULERS ───────────────────────────────────────────
-const { autoCreateFreeTournaments, updateTournamentStatuses } = require('./controllers/tournament.controller');
+const { autoCreateFreeTournaments, autoCreatePaidTournaments, updateTournamentStatuses } = require('./controllers/tournament.controller');
 
 // Update tournament statuses every 30 seconds
 setInterval(updateTournamentStatuses, 30 * 1000);
 
-// Create initial batch of free tournaments on startup (if none exist)
-setTimeout(() => autoCreateFreeTournaments(), 3000);
+// Run the Paid tournament auto-creation scheduler every minute
+setInterval(autoCreatePaidTournaments, 60 * 1000);
+
+// Create initial batch of tournaments on startup (if none exist)
+setTimeout(() => {
+  autoCreateFreeTournaments();
+  autoCreatePaidTournaments();
+}, 3000);
 
 // ─── CATCH-ALL → SERVE FRONTEND ───────────────────────────
 app.get('*', (req, res) => {

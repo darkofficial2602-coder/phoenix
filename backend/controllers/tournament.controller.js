@@ -62,6 +62,24 @@ const joinTournament = async (req, res) => {
 
     await supabase.from('notifications').insert({ user_id: req.user.id, type: 'tournament_join', title: 'Joined Tournament! 🏆', message: `You've joined "${tournament.name}". Get ready to play!` });
 
+    // PAID TOURNAMENT AUTO-LIVE TRIGGER
+    const updatedPlayers = tournament.current_players + 1;
+    if (tournament.type === 'paid' && updatedPlayers >= tournament.max_players) {
+        // Set start time to exactly 2 minutes from now. 
+        // The updateTournamentStatuses loop will switch it to 'live' when this time is reached.
+        const liveTime = new Date(Date.now() + 2 * 60000).toISOString();
+        await supabase.from('tournaments').update({ start_time: liveTime }).eq('id', tournament.id);
+        
+        // Notify all joined players
+        const { data: players } = await supabase.from('tournament_players').select('user_id').eq('tournament_id', tournament.id);
+        if (players) {
+             const notifs = players.map(p => ({
+                 user_id: p.user_id, type: 'tournament_alert', title: 'Tournament LIVE 🔥', message: `Your tournament "${tournament.name}" is going LIVE in 2 minutes! Join Now!`
+             }));
+             await supabase.from('notifications').insert(notifs);
+        }
+    }
+
     res.json({ success: true, message: 'Joined successfully!' });
   } catch (err) {
     console.error('Join tournament error:', err);
@@ -112,6 +130,67 @@ const autoCreateFreeTournaments = async (customStartTime, customEndTime) => {
     console.log(`✅ Auto-created free tournaments for ${startTime}`);
   } catch (err) {
     console.error('Auto-create error:', err);
+  }
+};
+
+let lastPaidSpawnTimes = { 1: 0, 3: 0, 5: 0 };
+
+const autoCreatePaidTournaments = async () => {
+  try {
+    const now = Date.now();
+    const intervals = { 1: 5 * 60000, 3: 20 * 60000, 5: 30 * 60000 };
+    const configs = [
+      { type: 1, timer: 1, max: 16, entries: [5, 10, 15, 20, 30, 50], name: '1 Min Knockout TR' },
+      { type: 2, timer: 3, max: 32, entries: [10, 20, 50, 80, 100, 200], name: '3 Min Knockout TR' },
+      { type: 3, timer: 5, max: 100, entries: [10, 20, 50, 80, 100, 200, 500], name: '5 Min Hybrid TR' }
+    ];
+    
+    for (const conf of configs) {
+       // Check if interval has passed before attempting to spawn new ones
+       if (now - lastPaidSpawnTimes[conf.timer] < intervals[conf.timer]) continue;
+       
+       let createdAny = false;
+       for (const entry of conf.entries) {
+          const { data: existing } = await supabase.from('tournaments')
+            .select('id')
+            .eq('type', 'paid')
+            .eq('timer_type', conf.timer)
+            .eq('entry_fee', entry)
+            .eq('status', 'upcoming')
+            .maybeSingle();
+            
+          if (!existing) {
+             const pool = entry * conf.max;
+             const prize_first = Math.floor(pool * (conf.timer === 5 ? 0.30 : 0.35));
+             const prize_second = Math.floor(pool * (conf.timer === 5 ? 0.25 : (conf.timer === 3 ? 0.25 : 0.30)));
+             const prize_third = Math.floor(pool * (conf.timer === 5 ? 0.15 : (conf.timer === 3 ? 0.15 : 0.20)));
+             
+             // Set start_time far into the future so it doesn't auto-start until max players hit.
+             const farFuture = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
+             
+             await supabase.from('tournaments').insert({
+               name: `${entry} Coin - ${conf.name}`,
+               type: 'paid',
+               timer_type: conf.timer,
+               format: 'standard',
+               entry_fee: entry,
+               max_players: conf.max,
+               current_players: 0,
+               status: 'upcoming',
+               start_time: farFuture,
+               prize_pool: pool,
+               prize_first, prize_second, prize_third
+             });
+             createdAny = true;
+          }
+       }
+       if (createdAny) {
+           lastPaidSpawnTimes[conf.timer] = now;
+           console.log(`✅ Auto-created new batch of Paid ${conf.timer} Min Tournaments`);
+       }
+    }
+  } catch(e) {
+    console.error('Paid TR auto-create error:', e);
   }
 };
 
@@ -258,4 +337,4 @@ const updateTournamentStatuses = async () => {
   }
 };
 
-module.exports = { getTournaments, getTournamentById, joinTournament, getLeaderboard, autoCreateFreeTournaments, updateTournamentStatuses };
+module.exports = { getTournaments, getTournamentById, joinTournament, getLeaderboard, autoCreateFreeTournaments, autoCreatePaidTournaments, updateTournamentStatuses };
