@@ -91,8 +91,7 @@ const processMatchResult = async (matchId, result, winnerId, finalFen = null) =>
     // Update match
     const { error: matchErr } = await supabase.from('matches').update({
       result, winner_id: winnerId || null, status: 'finished',
-      iq_change_p1: iq1, iq_change_p2: iq2, end_time: new Date().toISOString(),
-      fen: finalFen
+      iq_change_p1: iq1, iq_change_p2: iq2, end_time: new Date().toISOString()
     }).eq('id', matchId);
     
     if (matchErr) console.error('Match Update Error:', matchErr);
@@ -185,7 +184,6 @@ const saveBotMatch = async (req, res) => {
     const matchData = {
       player1_id: req.user.id,
       player2_id: null, // No opponent
-      player1_color: 'white',
       match_type: 'bot',
       timer_type: 0,
       status: 'active',

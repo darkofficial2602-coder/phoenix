@@ -9,43 +9,35 @@
 }
 
 :root {
-  --bg-primary: #E4DDD3;
-  --bg-secondary: #D4CDC3;
-  --bg-card: rgba(255,255,255,0.65);
-  --bg-card-hover: rgba(255,255,255,0.95);
-  --border: rgba(0,161,155,0.25);
-  --border-glow: rgba(0,161,155,0.5);
-  --teal: #00A19B;
-  --teal-dark: #00827D;
-  --orange: #ff6b35;
-  --gold: #f59e0b;
-  --purple: #8b5cf6;
-  --text-primary: #0f1c24;
-  --text-secondary: #27455a;
-  --text-muted: #5e8499;
+  --bg-primary: #0A0A0A;
+  --bg-secondary: #141414;
+  --bg-card: rgba(255,255,255,0.03);
+  --bg-card-hover: rgba(255,255,255,0.08);
+  --border: rgba(212,175,55,0.25);
+  --border-glow: rgba(212,175,55,0.5);
+  --teal: #D4AF37;       /* Using Gold as Primary */
+  --teal-dark: #b59226;  /* Dark Gold */
+  --orange: #D4AF37;
+  --gold: #D4AF37;
+  --purple: #0F52BA;     /* Accent Royal Blue */
+  --text-primary: #ffffff;
+  --text-secondary: #d1d1d1;
+  --text-muted: #888888;
   --success: #22c55e;
   --error: #ef4444;
   --warning: #f59e0b;
   --sidebar-w: 240px;
   --topbar-h: 64px;
   --radius: 12px;
-  --shadow: 0 8px 32px rgba(0,0,0,0.05);
-  --glow-teal: 0 0 20px rgba(0,161,155,0.35);
-  --glow-orange: 0 0 20px rgba(255,107,53,0.3);
+  --shadow: 0 8px 32px rgba(0,0,0,0.5);
+  --glow-teal: 0 0 20px rgba(212,175,55,0.35);
+  --glow-orange: 0 0 20px rgba(212,175,55,0.30);
   --font-display: 'Arial', sans-serif;
   --font-body: 'Arial', sans-serif;
 }
 
 [data-theme="dark"] {
-  --bg-primary: #060912;
-  --bg-secondary: #0E1420;
-  --bg-card: rgba(255, 255, 255, 0.03);
-  --bg-card-hover: rgba(255, 255, 255, 0.08);
-  --border: rgba(255, 255, 255, 0.06);
-  --border-glow: rgba(0, 161, 155, 0.4);
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  /* Inherit the native dark theme from root */
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -71,7 +63,7 @@ body {
 /* SIDEBAR */
 .sidebar {
   width: var(--sidebar-w);
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(10, 10, 10, 0.8);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -205,7 +197,7 @@ body {
 /* TOPBAR */
 .topbar {
   height: var(--topbar-h);
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(10, 10, 10, 0.8);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(20px);
   display: flex; align-items: center; justify-content: space-between;

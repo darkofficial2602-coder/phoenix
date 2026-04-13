@@ -38,12 +38,15 @@ module.exports = (io) => {
       if (userSockets.has(userId) && userSockets.get(userId).size > 0) {
           // Gracefully disconnect OLD sockets to allow seamless reconnections 
           // without triggering the 60s timeout lock.
-          for (const oldSocketId of userSockets.get(userId)) {
+          const oldIds = Array.from(userSockets.get(userId));
+          for (const oldSocketId of oldIds) {
               io.to(oldSocketId).emit('auth_error', { message: 'Logged in from another device. Session terminated.' });
               const oldSocket = io.sockets.sockets.get(oldSocketId);
               if (oldSocket) oldSocket.disconnect(true);
           }
-          userSockets.get(userId).clear();
+          if (userSockets.has(userId)) {
+              userSockets.get(userId).clear();
+          }
       }
 
       socketToUser.set(socket.id, { userId, username });
@@ -353,7 +356,6 @@ module.exports = (io) => {
       const matchData = {
         player1_id: p1.userId,
         player2_id: p2.userId,
-        player1_color: p1.color || 'white',
         match_type: matchType,
         timer_type: t,
         status: 'active',
