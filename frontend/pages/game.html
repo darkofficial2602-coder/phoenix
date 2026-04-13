@@ -239,7 +239,8 @@ function handlePromotion(source, target) {
   pieces.forEach(p => {
     const el = document.createElement('div');
     el.className = 'promotion-piece';
-    const pieceImg = `https://chessboardjs.com/img/chesspieces/wikipedia/${color.toUpperCase()}${p.toUpperCase()}.png`;
+    // Fix: Correct casing for piece images (lowercase color, uppercase piece)
+    const pieceImg = `https://chessboardjs.com/img/chesspieces/wikipedia/${color}${p.toUpperCase()}.png`;
     el.innerHTML = `<img src="${pieceImg}" width="45">`;
     el.onclick = () => selectPromotion(p);
     options.appendChild(el);
