@@ -36,17 +36,8 @@ module.exports = (io) => {
     socket.on('authenticate', async ({ userId, username }) => {
       // Single-Device Enforcement
       if (userSockets.has(userId) && userSockets.get(userId).size > 0) {
-          // Gracefully disconnect OLD sockets to allow seamless reconnections 
-          // without triggering the 60s timeout lock.
-          const oldIds = Array.from(userSockets.get(userId));
-          for (const oldSocketId of oldIds) {
-              io.to(oldSocketId).emit('auth_error', { message: 'Logged in from another device. Session terminated.' });
-              const oldSocket = io.sockets.sockets.get(oldSocketId);
-              if (oldSocket) oldSocket.disconnect(true);
-          }
-          if (userSockets.has(userId)) {
-              userSockets.get(userId).clear();
-          }
+          // Allow multiple instances or tabs silently instead of aggressively kicking.
+          // By not dropping them, they can browse Dashboard and Play simultaneously.
       }
 
       socketToUser.set(socket.id, { userId, username });
@@ -59,9 +50,11 @@ module.exports = (io) => {
         if (game.player1.userId === userId) {
           game.player1.socketId = socket.id;
           if (game.disconnectTimeout) { clearTimeout(game.disconnectTimeout); game.disconnectTimeout = null; }
+          socket.emit('match_sync', { fen: game.chess.fen(), white_time: game.player1.time, black_time: game.player2.time, moveCount: game.moveCount || 0 });
         } else if (game.player2.userId === userId) {
           game.player2.socketId = socket.id;
           if (game.disconnectTimeout) { clearTimeout(game.disconnectTimeout); game.disconnectTimeout = null; }
+          socket.emit('match_sync', { fen: game.chess.fen(), white_time: game.player1.time, black_time: game.player2.time, moveCount: game.moveCount || 0 });
         }
       }
 
@@ -333,7 +326,7 @@ module.exports = (io) => {
               const result = disconnectedIsP1 ? 'player2_win' : 'player1_win';
               const winnerId = disconnectedIsP1 ? game.player2.userId : game.player1.userId;
               await endGame(io, matchId, game, result, winnerId, 'disconnect');
-            }, 10000); // 10 seconds to navigate to game.html and reconnect
+            }, 30000); // 30 seconds to navigate to game.html and reconnect
 
             break;
           }

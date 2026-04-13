@@ -665,6 +665,21 @@ function triggerBotResponse(userMsg) {
 // Socket listeners
 const sock = initSocket();
 
+sock.on('match_sync', (data) => {
+  if (data.fen) {
+    chess.load(data.fen);
+    board.position(data.fen);
+    setTimeout(updateLastMoveHighlight, 250);
+  }
+  myTime = myColor === 'white' ? data.white_time : data.black_time;
+  oppTime = myColor === 'white' ? data.black_time : data.white_time;
+  
+  if (data.moveCount) {
+    moveCount = data.moveCount;
+  }
+  updatePlayerBar();
+});
+
 sock.on('move_error', (data) => {
   Toast.error(data.message || 'Move failed/rejected.');
   // Undo the move locally
