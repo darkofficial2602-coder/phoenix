@@ -164,11 +164,22 @@ const processMatchResult = async (matchId, result, winnerId, finalFen = null) =>
            scoreChange2 = matchPts2 + (isP1White ? bCapPoints : wCapPoints);
        }
 
+       const updateTourneyPlayer = async (uid, change, won, drew) => {
+         const { data: tp } = await supabase.from('tournament_players').select('score, matches_won, matches_drawn').eq('tournament_id', match.tournament_id).eq('user_id', uid).single();
+         if (tp) {
+            await supabase.from('tournament_players').update({
+               score: (tp.score || 0) + change,
+               matches_won: (tp.matches_won || 0) + won,
+               matches_drawn: (tp.matches_drawn || 0) + drew
+            }).eq('tournament_id', match.tournament_id).eq('user_id', uid);
+         }
+       };
+
       if (match.player1_id) {
-        await supabase.rpc('increment_tournament_score', { p_tournament_id: match.tournament_id, p_user_id: match.player1_id, p_score: scoreChange1, p_won: p1Win ? 1 : 0, p_drew: isDraw ? 1 : 0 });
+        await updateTourneyPlayer(match.player1_id, scoreChange1, p1Win ? 1 : 0, isDraw ? 1 : 0);
       }
       if (match.player2_id) {
-        await supabase.rpc('increment_tournament_score', { p_tournament_id: match.tournament_id, p_user_id: match.player2_id, p_score: scoreChange2, p_won: p2Win ? 1 : 0, p_drew: isDraw ? 1 : 0 });
+        await updateTourneyPlayer(match.player2_id, scoreChange2, p2Win ? 1 : 0, isDraw ? 1 : 0);
       }
     }
 
