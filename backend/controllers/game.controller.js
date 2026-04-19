@@ -5,7 +5,7 @@ const getMatchHistory = async (req, res) => {
     const { filter, page = 1, limit = 20 } = req.query;
     let query = supabase
       .from('matches')
-      .select('*, p1:player1_id(id, username, profile_image, iq_level), p2:player2_id(id, username, profile_image, iq_level)', { count: 'exact' })
+      .select('*, p1:player1_id(id, username, profile_image, iq_level), p2:player2_id(id, username, profile_image, iq_level), tournament:tournament_id(display_id)', { count: 'exact' })
       .or(`player1_id.eq.${req.user.id},player2_id.eq.${req.user.id}`)
       .eq('status', 'finished')
       .order('created_at', { ascending: false })

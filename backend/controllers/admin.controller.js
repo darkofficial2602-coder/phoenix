@@ -121,7 +121,7 @@ const reviewKYC = async (req, res) => {
         kyc_status: newStatus,
         kyc_rejection_reason: rejection_reason || ''
       })
-      .eq('id', kyc.user_id);  // ← kyc.user_id use பண்ணு
+      .eq('id', kyc.user_id);
 
     // Notification
     await supabase

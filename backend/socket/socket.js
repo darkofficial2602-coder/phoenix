@@ -26,12 +26,17 @@ const banLocks = new Set(); // Prevents anti-cheat double-confiscation race cond
 let onlineCount = 0;
 
 module.exports = (io) => {
-  TournamentManager.init(io, userToSocket);
+  // Initialize Tournament Manager
+  TournamentManager.init(io);
 
-  // Expose for updates
   io.on('connection', (socket) => {
-    // Standard broadcast on connection to all, with unique user count
     broadcastLiveInfo(io);
+
+    // ─── TOURNAMENT SYNC ──────────────────────────────────
+    socket.on('join_tournament', ({ tournamentId }) => {
+        socket.join(`tournament_${tournamentId}`);
+        console.log(`Socket ${socket.id} joined tournament room: ${tournamentId}`);
+    });
 
     // ─── AUTHENTICATE ───────────────────────────────────────
     socket.on('authenticate', async ({ userId, username }) => {
@@ -46,9 +51,6 @@ module.exports = (io) => {
       if (!userSockets.has(userId)) userSockets.set(userId, new Set());
       userSockets.get(userId).add(socket.id);
       
-      // Join user to their own private room for targeted events
-      socket.join(`user_${userId}`);
-
       // Force live info sync to client directly once authenticated successfully
       broadcastLiveInfo(io);
       socket.emit('live_info', { online_users: userSockets.size, active_matches: activeGames.size });
@@ -104,24 +106,6 @@ module.exports = (io) => {
     });
 
     // ─── TOURNAMENT MGR EVENTS ──────────────────────────────
-    socket.on('join_tournament', ({ tournamentId }) => {
-      socket.join(`tournament_${tournamentId}`);
-      console.log(`[DEBUG] SOCKET joined tournament room: tournament_${tournamentId}`);
-    });
-
-    socket.on('join_match', ({ matchId, userId, isTournament }) => {
-      const roomId = `match_${matchId}`;
-      socket.join(roomId);
-      console.log(`[DEBUG] SOCKET joined match room: ${roomId} (User: ${userId})`);
-
-      if (isTournament) {
-        TournamentManager.rejoinMatch(socket, matchId, userId);
-      } else {
-        // Regular match logic
-        socket.emit('match_sync', { status: 'connected' });
-      }
-    });
-
     socket.on('rejoin_tr_match', ({ matchId, userId }) => {
         TournamentManager.rejoinMatch(socket, matchId, userId);
     });

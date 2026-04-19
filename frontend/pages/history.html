@@ -106,7 +106,10 @@ async function loadMatches(append = false) {
       <div class="avatar-initial" style="width:40px;height:40px;font-size:16px">${avatarHtml}</div>
       <div style="flex:1">
         <div style="font-weight:600;font-size:14px">${m.match_type === 'bot' ? `Bot (IQ ${m.bot_difficulty || '?'})` : fmt.username(opponent?.username || 'Unknown')}</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${modeLabels[m.match_type] || m.match_type} · ${m.timer_type ? m.timer_type + ' min' : 'No timer'}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
+          ${m.match_type === 'tournament' ? `<span style="color:var(--gold);font-weight:700">${m.tournament?.display_id || ''}</span> · ` : ''}
+          ${modeLabels[m.match_type] || m.match_type} · ${m.timer_type ? m.timer_type + ' min' : 'No timer'}
+        </div>
       </div>
       <div style="text-align:right;flex-shrink:0">
         <div style="font-size:11px;color:var(--text-muted)">${fmt.relTime(m.created_at)}</div>

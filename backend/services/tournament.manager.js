@@ -8,28 +8,27 @@ const activeTourneys = new Map();
 const activeTournamentMatches = new Map(); 
 
 class TournamentManager {
-    static init(io, userToSocket) {
+    static init(io) {
         this.io = io;
-        this.userToSocket = userToSocket;
-        // Check every second for advancing timers and states
+        // Check every second for advancing timers and states inside activeTourneys
         setInterval(() => this.tick(), 1000);
-        // Poll for tournaments transitioning states in DB
-        setInterval(() => this.pollTournaments(), 5000);
+        // Check every 5 seconds for new tournaments transitioning to live/full
+        setInterval(() => this.pollLiveTournaments(), 5000);
     }
 
-    static async pollTournaments() {
+    static async pollLiveTournaments() {
         try {
-            // Pick up tournaments that are 'full' or 'live' but not in memory
-            const { data: tourneys } = await supabase.from('tournaments')
+            // Find paid tournaments that are 'live' or 'full' (Going LIVE)
+            const { data: liveTourneys } = await supabase.from('tournaments')
                 .select('*')
                 .eq('type', 'paid')
-                .in('status', ['full', 'live', 'starting', 'playing', 'rest']);
+                .in('status', ['live', 'full', 'starting']);
             
-            if (!tourneys) return;
+            if (!liveTourneys) return;
 
-            for (const t of tourneys) {
+            for (const t of liveTourneys) {
                 if (!activeTourneys.has(t.id)) {
-                    // Load players
+                    // It's a new live tournament not yet picked up by the manager!
                     const { data: players } = await supabase.from('tournament_players')
                         .select('*, profiles(username, rank)')
                         .eq('tournament_id', t.id);
@@ -39,47 +38,33 @@ class TournamentManager {
                          username: p.profiles?.username || 'Unknown',
                          rank: p.profiles?.rank || 'Bronze',
                          socketId: null,
-                         status: p.status || 'active' // Ensure default is active
+                         points: 0,
+                         status: 'alive'
                     }));
 
-                    this.initializeActiveTournament(t.id, playersData, t);
-                    console.log(`🚀 TournamentManager picked up TR: ${t.id} (${t.status}) with ${playersData.length} players`);
+                    this.startLiveTournament(t.id, playersData, t);
+                    console.log(`🚀 TournamentManager picked up TR-${t.tr_id || t.id}: ${t.status} (${playersData.length} players)`);
                 }
             }
         } catch(e) {
-            console.error('pollTournaments err:', e);
+            console.error('pollLiveTournaments err:', e);
         }
     }
 
-    static initializeActiveTournament(tournamentId, playersData, tData) {
+    static async startLiveTournament(tournamentId, playersData, tData) {
         const tState = {
             id: tournamentId,
-            tr_id: tData.display_id || `TR-${tournamentId.slice(0,4)}`,
-            players: playersData.filter(p => (p.status || 'active') === 'active'),
-            allPlayers: playersData,
+            tr_id: tData.tr_id,
+            players: [...playersData],
+            allPlayers: [...playersData],
             max: tData.max_players,
             timer: tData.timer_type,
-            status: tData.status.toLowerCase(), 
-            countdown: 0,
-            round: tData.round || 0,
+            status: tData.status === 'full' ? 'going_live' : 'starting',
+            countdown: tData.status === 'full' ? 60 : 15, // 60s if full, 15s if live
+            round: 0,
             matches: [],
-            prize_pool: tData.prize_pool || 0,
-            prize_first: tData.prize_first || 0,
-            prize_second: tData.prize_second || 0,
-            prize_third: tData.prize_third || 0
+            prize_pool: tData.prize_pool || 0
         };
-
-        // Initialize countdowns based on pickup phase
-        if (tState.status === 'full') {
-            tState.countdown = 2 * 60; // 2 min to LIVE
-        } else if (tState.status === 'live') {
-            tState.countdown = 5 * 60; // 5 min to STARTING (as per master spec)
-        }
-
-        // If it's already playing, recover matches from DB
-        if (['starting', 'playing', 'rest'].includes(tState.status)) {
-            // Recovery logic could be enhanced here to fetch active matches from DB
-        }
 
         activeTourneys.set(tournamentId, tState);
         this.broadcastState(tournamentId);
@@ -87,57 +72,38 @@ class TournamentManager {
 
     static tick() {
         activeTourneys.forEach((tState, tId) => {
-            // 1. Lifecycle Management
-            if (tState.status === 'full') {
+            if (tState.status === 'going_live' || tState.status === 'starting' || tState.status === 'rest') {
                 tState.countdown--;
                 if (tState.countdown <= 0) {
-                    this.transitionToLive(tState);
-                }
-            } 
-            else if (tState.status === 'live') {
-                tState.countdown--;
-                if (tState.countdown <= 0) {
-                    this.transitionToStarting(tState);
-                }
-            }
-            else if (tState.status === 'starting') {
-                this.transitionToRound(tState, 1);
-            }
-            else if (tState.status.startsWith('round_') || tState.status === 'final' || tState.status === 'playing') {
-                const allDone = tState.matches.every(m => m.status === 'finished');
-                if (allDone && tState.matches.length > 0) {
-                    this.processRoundEnd(tState);
-                }
-            }
-            else if (tState.status === 'rest') {
-                tState.countdown--;
-                if (tState.countdown <= 0) {
-                    const nextRound = tState.round + 1;
-                    if (tState.players.length <= 1) {
-                        this.finishTournament(tId, tState);
+                    if (tState.status === 'going_live') {
+                        tState.status = 'starting';
+                        tState.countdown = 15;
+                        supabase.from('tournaments').update({ status: 'live' }).eq('id', tId).then(()=>{});
                     } else {
-                        this.transitionToRound(tState, nextRound);
+                        this.nextRound(tState);
                     }
                 }
-            }
-
-            if (tState.countdown % 5 === 0 || tState.countdown <= 10) {
                 this.broadcastState(tId);
+            } 
+            else if (tState.status === 'playing') {
+                const allDone = tState.matches.every(m => m.status === 'finished');
+                if (allDone && tState.matches.length > 0) {
+                    tState.status = 'rest';
+                    tState.countdown = 15;
+                    this.processRoundResults(tState);
+                    this.broadcastState(tId);
+                }
             }
         });
 
-        // 2. Active Match Timers
+        // Tick Active Matches
         activeTournamentMatches.forEach((match, matchId) => {
             if (match.status !== 'playing') return;
-
             if (match.turn === 'w') match.player1.time--;
             else match.player2.time--;
 
-            if (match.player1.time % 5 === 0 || match.player1.time <= 10 || match.player2.time <= 10) {
-                this.io.to(match.roomId).emit('timer_update', { 
-                    white_time: Math.max(0, match.player1.time), 
-                    black_time: Math.max(0, match.player2.time) 
-                });
+            if (match.player1.time % 10 === 0 || match.player1.time <= 5 || match.player2.time <= 5) {
+                this.io.to(match.roomId).emit('timer_update', { white_time: match.player1.time, black_time: match.player2.time });
             }
 
             if (match.player1.time <= 0 || match.player2.time <= 0) {
@@ -148,218 +114,140 @@ class TournamentManager {
         });
     }
 
-    static async transitionToLive(tState) {
-        tState.status = 'live';
-        tState.countdown = 5 * 60; // 5 min to STARTING
-        const liveStartTime = new Date(Date.now() + 5 * 60000).toISOString();
-        await supabase.from('tournaments').update({ status: 'live', start_time: liveStartTime }).eq('id', tState.id);
-        this.io.to(`tournament_${tState.id}`).emit('tournament_msg', { message: 'Tournament LIVE – Get Ready!' });
-        this.broadcastState(tState.id);
-    }
+    static async nextRound(tState) {
+        if (tState.players.length <= 1) {
+            return this.finishTournament(tState.id, tState);
+        }
 
-    static async transitionToStarting(tState) {
-        tState.status = 'starting';
-        await supabase.from('tournaments').update({ status: 'starting' }).eq('id', tState.id);
-        this.broadcastState(tState.id);
-    }
-
-    static async transitionToRound(tState, roundNum) {
-        tState.round = roundNum;
-        tState.status = roundNum === 4 ? 'final' : `round_${roundNum}`;
+        tState.round++;
+        tState.status = 'playing';
         tState.matches = [];
-        
-        await supabase.from('tournaments').update({ status: 'playing', round: roundNum }).eq('id', tState.id);
 
-        const pool = [...tState.players];
-        pool.sort(() => 0.5 - Math.random());
+        const phaseName = tState.players.length === 2 ? 'final' : (tState.players.length === 4 ? 'semifinal' : `round_${tState.round}`);
+        await supabase.from('tournaments').update({ phase: phaseName, status: 'live' }).eq('id', tState.id);
 
+        const pool = [...tState.players].sort(() => 0.5 - Math.random());
         while (pool.length >= 2) {
-            const p1 = pool.pop();
-            const p2 = pool.pop();
-            await this.setupMatch(p1, p2, tState);
+            await this.setupMatch(pool.pop(), pool.pop(), tState);
         }
 
         if (pool.length === 1) {
             const pBye = pool.pop();
-            this.io.to(`tournament_${tState.id}`).emit('tournament_msg', { message: `${pBye.username} gets a BYE this round!` });
+            if (pBye.socketId) this.io.to(pBye.socketId).emit('tournament_msg', { message: 'You got a BYE! Advancing to next round.' });
         }
-        
         this.broadcastState(tState.id);
     }
 
     static async setupMatch(p1, p2, tState) {
-        const matchId = `tr_${tState.id}_${p1.user_id.slice(0, 4)}_${p2.user_id.slice(0, 4)}`;
-        const roomId = `match_${matchId}`;
-        const sid1 = this.userToSocket.get(p1.user_id);
-        const sid2 = this.userToSocket.get(p2.user_id);
-        
+        const { data: dbMatch } = await supabase.from('matches').insert({
+            player1_id: p1.user_id, player2_id: p2.user_id,
+            match_type: 'tournament', timer_type: tState.timer,
+            tournament_id: tState.id, status: 'active'
+        }).select().single();
+
+        if (!dbMatch) return;
+
+        const matchId = dbMatch.id;
+        const roomId = 'tr_' + matchId;
         const match = {
-            id: matchId,
-            roomId,
-            round: tState.round,
-            chess: new Chess(),
-            turn: 'w',
-            player1: { userId: p1.user_id, time: tState.timer * 60, socketId: sid1, username: p1.username },
-            player2: { userId: p2.user_id, time: tState.timer * 60, socketId: sid2, username: p2.username },
-            status: 'playing',
+            id: matchId, tournamentId: tState.id, roomId, status: 'playing',
+            chess: new Chess(), turn: 'w',
+            player1: { userId: p1.user_id, time: tState.timer * 60, socketId: p1.socketId },
+            player2: { userId: p2.user_id, time: tState.timer * 60, socketId: p2.socketId },
             winnerId: null
         };
-
-        tState.matches.push(match);
+        
         activeTournamentMatches.set(matchId, match);
+        tState.matches.push(match);
 
-        // Notify players with BOTH match_found_tr and match_start for compatibility
-        const eventData = { 
-            matchId, roomId, color: 'white', opponent: p2, duration: tState.timer * 60, round: tState.round 
-        };
+        [p1, p2].forEach(p => {
+            if (p.socketId) {
+                const s = this.io.sockets.sockets.get(p.socketId);
+                if (s) { s.join(roomId); s.join(`tournament_${tState.id}`); }
+            }
+        });
 
-        this.io.to(`user_${p1.user_id}`).emit('match_found_tr', eventData);
-        this.io.to(`user_${p1.user_id}`).emit('match_start', { ...eventData, color: 'white', opponent: p2 });
-
-        const eventData2 = { 
-            matchId, roomId, color: 'black', opponent: p1, duration: tState.timer * 60, round: tState.round 
-        };
-        this.io.to(`user_${p2.user_id}`).emit('match_found_tr', eventData2);
-        this.io.to(`user_${p2.user_id}`).emit('match_start', { ...eventData2, color: 'black', opponent: p1 });
+        const eventData = { matchId, roomId, duration: tState.timer * 60, round: tState.round, tr_id: tState.tr_id };
+        if (p1.socketId) this.io.to(p1.socketId).emit('match_found_tr', { ...eventData, color: 'white', opponent: p2 });
+        if (p2.socketId) this.io.to(p2.socketId).emit('match_found_tr', { ...eventData, color: 'black', opponent: p1 });
     }
 
-    static processRoundEnd(tState) {
-        const advanced = [];
-        const eliminated = [];
-
-        tState.matches.forEach(async m => {
-            const winnerId = m.winnerId || (Math.random() > 0.5 ? m.player1.userId : m.player2.userId);
-            const loserId = m.player1.userId === winnerId ? m.player2.userId : m.player1.userId;
-            
-            const winner = tState.players.find(p => p.user_id === winnerId);
-            const loser = tState.players.find(p => p.user_id === loserId);
-
-            if (winner) {
-                winner.score = (winner.score || 0) + 1;
-                advanced.push(winner);
-                // Persist score
-                await supabase.from('tournament_players').update({ score: winner.score }).eq('tournament_id', tState.id).eq('user_id', winnerId);
-            }
-            if (loser) {
-                loser.status = 'eliminated';
-                eliminated.push(loser);
-            }
+    static processRoundResults(tState) {
+        const winners = new Set();
+        tState.matches.forEach(m => {
+            if (m.winnerId) winners.add(m.winnerId);
+            else winners.add(Math.random() > 0.5 ? m.player1.userId : m.player2.userId); // Tiebreak
         });
 
-        tState.players.forEach(p => {
-            const played = tState.matches.some(m => m.player1.userId === p.user_id || m.player2.userId === p.user_id);
-            if (!played && p.status === 'active') advanced.push(p);
-        });
+        // Add byes
+        const playedIds = new Set();
+        tState.matches.forEach(m => { playedIds.add(m.player1.userId); playedIds.add(m.player2.userId); });
+        tState.players.forEach(p => { if (!playedIds.has(p.user_id)) winners.add(p.user_id); });
 
-        eliminated.forEach(async p => {
-            await supabase.from('tournament_players').update({ status: 'eliminated' }).eq('tournament_id', tState.id).eq('user_id', p.user_id);
-            this.io.to(`user_${p.user_id}`).emit('tournament_eliminated', { message: 'Eliminated from tournament.' });
-        });
+        tState.players = tState.players.filter(p => winners.has(p.user_id));
+    }
 
-        tState.players = advanced;
-        tState.status = 'rest';
-        tState.countdown = 15;
-        this.broadcastState(tState.id);
+    static async resolveMatch(matchId, result, winnerId, reason) {
+        const match = activeTournamentMatches.get(matchId);
+        if (!match) return;
+        match.status = 'finished';
+        match.winnerId = winnerId;
+        this.io.to(match.roomId).emit('game_over', { result, winnerId, reason, fen: match.chess.fen() });
+        processMatchResult(matchId, result, winnerId, match.chess.fen()).catch(()=>{});
+        activeTournamentMatches.delete(matchId);
     }
 
     static handleMove(userId, matchId, moveSan) {
         const match = activeTournamentMatches.get(matchId);
         if (!match || match.status !== 'playing') return false;
-
-        const isP1 = match.player1.userId === userId;
-        const reqTurn = isP1 ? 'w' : 'b';
-        if (match.turn !== reqTurn) return false;
+        if ((match.turn === 'w' && match.player1.userId !== userId) || (match.turn === 'b' && match.player2.userId !== userId)) return false;
 
         try {
             const moveData = match.chess.move(moveSan);
             if (!moveData) return false;
-
             match.turn = match.chess.turn();
-            this.io.to(match.roomId).emit('move_made', { 
-                move: moveData, 
-                fen: match.chess.fen(), 
-                turn: match.turn,
-                white_time: match.player1.time,
-                black_time: match.player2.time
-            });
-
+            this.io.to(match.roomId).emit('move_made', { move: moveData, fen: match.chess.fen(), turn: match.turn });
             if (match.chess.isGameOver()) {
-                let result = 'draw';
-                let winnerId = null;
-                if (match.chess.isCheckmate()) {
-                    result = reqTurn === 'w' ? 'player1_win' : 'player2_win';
-                    winnerId = userId;
-                }
+                const result = match.chess.isCheckmate() ? (match.chess.turn() === 'w' ? 'player2_win' : 'player1_win') : 'draw';
+                const winnerId = match.chess.isCheckmate() ? (match.chess.turn() === 'w' ? match.player2.userId : match.player1.userId) : null;
                 this.resolveMatch(matchId, result, winnerId, 'board');
             }
             return true;
         } catch(e) { return false; }
     }
 
-    static resolveMatch(matchId, result, winnerId, reason) {
-        const match = activeTournamentMatches.get(matchId);
-        if (!match || match.status === 'finished') return;
-
-        match.status = 'finished';
-        match.winnerId = winnerId;
-        
-        this.io.to(match.roomId).emit('game_over', { result, winnerId, reason, fen: match.chess.fen() });
-        processMatchResult(matchId, result, winnerId, match.chess.fen()).catch(()=>{});
-        activeTournamentMatches.delete(matchId);
-    }
-
     static async finishTournament(tId, tState) {
         tState.status = 'completed';
-        await supabase.from('tournaments').update({ status: 'completed' }).eq('id', tId);
-        
-        const winner = tState.players[0];
-        if (winner) {
-            const { data: tData } = await supabase.from('tournaments').select('*').eq('id', tId).single();
-            if (tData) {
-                const { distributeTournamentPrizes } = require('../controllers/tournament.controller');
-                await distributeTournamentPrizes(tData);
-            }
-        }
         this.broadcastState(tId);
+        await supabase.from('tournaments').update({ status: 'completed', phase: 'completed' }).eq('id', tId);
+        const { distributeTournamentPrizes } = require('../controllers/tournament.controller');
+        const { data: tData } = await supabase.from('tournaments').select('*').eq('id', tId).single();
+        if (tData) await distributeTournamentPrizes(tData);
         activeTourneys.delete(tId);
     }
 
     static broadcastState(tId) {
         const tState = activeTourneys.get(tId);
         if (!tState) return;
-        
-        const syncMatches = tState.matches.map(m => ({
-            id: m.id,
-            round: m.round,
-            player1: { userId: m.player1.userId, username: m.player1.username },
-            player2: { userId: m.player2.userId, username: m.player2.username },
-            winnerId: m.winnerId,
-            status: m.status
-        }));
-
         this.io.to(`tournament_${tId}`).emit(`tournament_sync_${tId}`, {
-             status: tState.status,
-             countdown: Math.max(0, tState.countdown),
-             round: tState.round,
-             players_alive: tState.players.length,
-             matches: syncMatches,
-             players: tState.players.map(p => ({ user_id: p.user_id, username: p.username, score: p.score }))
+             status: tState.status, countdown: tState.countdown,
+             round: tState.round, players_alive: tState.players.length, tr_id: tState.tr_id
         });
     }
 
     static rejoinMatch(socket, matchId, userId) {
         const match = activeTournamentMatches.get(matchId);
         if (!match) return false;
-        
+        if (match.player1.userId === userId) match.player1.socketId = socket.id;
+        else if (match.player2.userId === userId) match.player2.socketId = socket.id;
+        else return false;
         socket.join(match.roomId);
+        socket.join(`tournament_${match.tournamentId}`);
         socket.emit('match_rejoined', { 
-            roomId: match.roomId,
-            fen: match.chess.fen(), 
-            turn: match.turn,
-            white_time: match.player1.time,
-            black_time: match.player2.time,
+            roomId: match.roomId, fen: match.chess.fen(), turn: match.turn,
+            white_time: match.player1.time, black_time: match.player2.time,
             color: match.player1.userId === userId ? 'white' : 'black',
-            opponent: match.player1.userId === userId ? { user_id: match.player2.userId, username: match.player2.username } : { user_id: match.player1.userId, username: match.player1.username }
+            opponent: match.player1.userId === userId ? match.player2 : match.player1
         });
         return true;
     }

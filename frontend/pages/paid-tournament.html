@@ -27,12 +27,16 @@
       color: var(--gold);
       font-weight: 700;
     }
-    
-    .card-countdown {
-      font-size: 11px;
+
+    .live-countdown {
       color: var(--orange);
       font-weight: 700;
-      margin-top: 4px;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 0.7; }
+      50% { opacity: 1; }
+      100% { opacity: 0.7; }
     }
   </style>
 </head>
@@ -78,7 +82,16 @@
 
           <!-- Filters -->
           <div class="flex" style="gap:12px; flex-wrap:wrap;">
-            <select class="input" style="max-width:150px" id="filter-entry" onchange="renderTournaments()">
+            <select id="filter-min" class="input"
+              style="padding:8px 12px; width:auto; border-radius:8px; cursor:pointer;" onchange="renderTournaments()">
+              <option value="all">Timer: All</option>
+              <option value="1">1 Min</option>
+              <option value="3">3 Min</option>
+              <option value="5">5 Min</option>
+            </select>
+
+            <select id="filter-entry" class="input"
+              style="padding:8px 12px; width:auto; border-radius:8px; cursor:pointer;" onchange="renderTournaments()">
               <option value="all">Entry: All</option>
               <option value="5">5 Coins</option>
               <option value="10">10 Coins</option>
@@ -175,6 +188,7 @@
     if (!requireAuth()) throw new Error();
     const user = getUser();
     loadSidebar();
+    
     if (user.profile_image) {
       document.getElementById('tb-avatar').innerHTML = `<img src="${user.profile_image}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
     } else {
@@ -194,109 +208,79 @@
 
     let allTournaments = [];
 
-    let countdownInterval = null;
-
     async function loadTournaments() {
-      // UPCOMING tab shows upcoming + full. LIVE tab shows live + starting + playing.
-      const statusFilter = currentTab === 'live' ? 'live,starting,playing' : 'upcoming,full';
-      const res = await TournamentAPI.getAll('paid', statusFilter);
+      const res = await TournamentAPI.getAll('paid', currentTab === 'live' ? 'live' : 'upcoming');
       if (res?.success) {
         allTournaments = res.tournaments || [];
       } else {
         allTournaments = [];
       }
       renderTournaments();
-
-      // Start global card countdown refresh
-      if (countdownInterval) clearInterval(countdownInterval);
-      countdownInterval = setInterval(() => {
-        const timers = document.querySelectorAll('.card-countdown');
-        timers.forEach(el => {
-          const end = new Date(el.dataset.time).getTime();
-          const diff = Math.max(0, Math.floor((end - Date.now()) / 1000));
-          const status = el.dataset.status;
-          const prefix = status === 'full' ? 'Going LIVE in: ' : 'Matchmaking in: ';
-          el.textContent = `${prefix}${fmt.countdown(diff)}`;
-        });
-      }, 1000);
     }
 
     function createCardHTML(t) {
-      const pct = Math.round((t.current_players / t.max_players) * 100);
-      const isJoined = t.players?.some(p => (p.user_id?.id || p.user_id) === user.id);
+      const isFull = t.status === 'full';
+      const isLive = t.status === 'live' || t.status === 'starting';
+      const isJoined = t.is_joined;
       const canAfford = userBalance >= t.entry_fee;
-      const formatName = `16 Player Knockout`;
-      const displayId = t.display_id || `TR-${t.id.slice(0,4)}`;
-      
-      let countdownHTML = '';
-      if (t.status === 'full' || t.status === 'live') {
-        const diff = Math.max(0, Math.floor((new Date(t.start_time) - Date.now()) / 1000));
-        const prefix = t.status === 'full' ? 'Going LIVE in: ' : 'Matchmaking in: ';
-        countdownHTML = `<div class="card-countdown" data-time="${t.start_time}" data-status="${t.status}">${prefix}${fmt.countdown(diff)}</div>`;
-      }
+      const pct = Math.round((t.current_players / t.max_players) * 100);
+
+      let statusBadge = '';
+      if (isFull) statusBadge = '<span class="badge badge-pending"><i class="fa-solid fa-bolt"></i> GOING LIVE</span>';
+      else if (isLive) statusBadge = '<span class="badge badge-live"><i class="fa-solid fa-circle"></i> LIVE NOW</span>';
+      else statusBadge = '<span class="badge badge-upcoming"><i class="fa-solid fa-clock"></i> UPCOMING</span>';
 
       return `<div class="tournament-card" onclick="openEntry('${t.id}')">
         <div class="flex-between mb-12">
-          <div style="display:flex;gap:6px">
             <span class="timer-badge">${t.timer_type}min</span>
-            <span style="background:rgba(255,255,255,0.05);padding:4px 8px;border-radius:6px;font-size:10px;font-weight:700;color:var(--text-muted)">${displayId}</span>
-          </div>
-          <span class="badge ${t.status === 'live' ? 'badge-live' : (t.status === 'full' ? 'badge-pending' : 'badge-upcoming')}">
-            ${t.status === 'live' ? '<i class="fa-solid fa-circle" style="color:var(--error);"></i> LIVE' : 
-              (t.status === 'full' ? '<i class="fa-solid fa-users"></i> FULL' : '<i class="fa-solid fa-clock"></i> SOON')}
-          </span>
+            ${statusBadge}
         </div>
-        ${countdownHTML}
-        <div style="font-weight:700;font-size:15px;margin-bottom:2px">${t.name}</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px"><i class="fa-solid fa-trophy"></i> ${formatName}</div>
+        <div style="font-weight:700;font-size:15px;margin-bottom:2px">${t.tr_id ? 'TR-' + t.tr_id : ''} ${t.name}</div>
         <div style="font-family:var(--font-display);font-size:24px;font-weight:900;color:var(--gold);margin-bottom:4px">${t.prize_pool?.toLocaleString() || 0} <span style="font-size:12px;color:var(--text-secondary)">Coins</span></div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">Prize Pool (Top 3)</div>
         <div class="flex-between" style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">
-          <span>${t.current_players}/${t.max_players} players</span>
-          <span style="color:var(--orange)">Entry: ${t.entry_fee} <i class="fa-solid fa-coins"></i></span>
+            <span>${t.current_players}/${t.max_players} players</span>
+            <span style="color:var(--orange)">Entry: ${t.entry_fee} <i class="fa-solid fa-coins"></i></span>
         </div>
         <div class="players-bar"><div class="players-fill" style="width:${pct}%"></div></div>
         <div style="margin-top:12px">
-          ${isJoined ? (t.status === 'live' || t.status === 'full' || t.status === 'starting' || t.status === 'playing' ? '<button class="btn btn-primary btn-full btn-sm" onclick="event.stopPropagation(); window.location.href=\'/pages/tournament-live.html?id='+t.id+'\'">▶ Enter Arena</button>' : '<span class="badge badge-verified" style="width:100%;justify-content:center"><i class="fa-solid fa-check"></i> Joined</span>') :
-            (t.status === 'live' || t.status === 'full' || t.status === 'starting' || t.status === 'playing') ? '<span class="badge badge-rejected" style="width:100%;justify-content:center">Entry Closed</span>' :
-            !canAfford ? '<span style="font-size:11px;color:var(--error);display:block;text-align:center"><i class="fa-solid fa-triangle-exclamation"></i> Insufficient coins</span>' :
-            '<button class="btn btn-primary btn-full btn-sm">Join Tournament</button>'}
+            ${isJoined ? `<button class="btn btn-secondary btn-full btn-sm" onclick="event.stopPropagation(); window.location.href='/pages/tournament-live.html?id=${t.id}'">Enter Arena</button>` :
+              (isFull || isLive ? '<button class="btn btn-secondary btn-full btn-sm" disabled>Full / Live</button>' :
+              `<button class="btn btn-primary btn-full btn-sm" onclick="event.stopPropagation(); openEntry('${t.id}')">Join Tournament</button>`)
+            }
         </div>
       </div>`;
     }
 
     function renderTournaments() {
       const displayArea = document.getElementById('tournament-display');
-
       if (!allTournaments.length) {
         displayArea.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-muted)">
-      <div style="font-size:40px;margin-bottom:12px"><i class="fa-solid fa-trophy"></i></div>
-      <div style="font-weight:600">No ${currentTab} paid tournaments</div>
-      <div style="font-size:12px;margin-top:6px">Check back soon or ask admin to create one</div>
-    </div>`;
+          <div style="font-size:40px;margin-bottom:12px"><i class="fa-solid fa-trophy"></i></div>
+          <div style="font-weight:600">No ${currentTab} tournaments</div>
+          <div style="font-size:12px;margin-top:6px">Check back soon!</div>
+        </div>`;
         return;
       }
 
+      const filterMin = document.getElementById('filter-min').value;
       const filterEntry = document.getElementById('filter-entry').value;
-
+      
       let filteredList = allTournaments.filter(t => {
-        let matchesEntry = filterEntry === 'all' || t.entry_fee === parseInt(filterEntry);
-        return matchesEntry;
+        const matchMin = (filterMin === 'all' || t.timer_type === parseInt(filterMin));
+        const matchEntry = (filterEntry === 'all' || t.entry_fee === parseInt(filterEntry));
+        return matchMin && matchEntry;
       });
 
       if (filteredList.length === 0) {
         displayArea.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-muted)">
-          <div style="font-size:40px;margin-bottom:12px"><i class="fa-solid fa-filter"></i></div>
-          <div style="font-weight:600">No matching tournaments found</div>
-          <div style="font-size:12px;margin-top:6px">Try changing your filters</div>
+          <div style="font-size:40px;margin-bottom:12px"><i class="fa-solid fa-filter-circle-xmark"></i></div>
+          <div style="font-weight:600">No tournaments match filters</div>
+          <button class="btn btn-sm btn-secondary" style="margin-top:10px" onclick="document.getElementById('filter-min').value='all';document.getElementById('filter-entry').value='all';renderTournaments()">Reset Filters</button>
         </div>`;
-      } else {
-        displayArea.innerHTML = `
-          <div class="grid-auto">
-            ${filteredList.map(t => createCardHTML(t)).join('')}
-          </div>
-        `;
+        return;
       }
+
+      displayArea.innerHTML = `<div class="grid-auto">${filteredList.map(t => createCardHTML(t)).join('')}</div>`;
     }
 
     async function openEntry(id) {
@@ -307,9 +291,9 @@
       document.getElementById('entry-t-name').textContent = t.name;
       document.getElementById('entry-t-meta').textContent = `${t.timer_type}min · ${t.current_players}/${t.max_players} players`;
       document.getElementById('entry-pool').textContent = (t.prize_pool || 0).toLocaleString() + ' Coins';
-      document.getElementById('prize-1st').innerHTML = (t.prize_first || 0) + ' <i class="fa-solid fa-coins"></i>';
-      document.getElementById('prize-2nd').innerHTML = (t.prize_second || 0) + ' <i class="fa-solid fa-coins"></i>';
-      document.getElementById('prize-3rd').innerHTML = (t.prize_third || 0) + ' <i class="fa-solid fa-coins"></i>';
+      document.getElementById('prize-1st').textContent = t.prize_first || 0;
+      document.getElementById('prize-2nd').textContent = t.prize_second || 0;
+      document.getElementById('prize-3rd').textContent = t.prize_third || 0;
       document.getElementById('entry-fee-label').textContent = t.entry_fee + ' Coins';
       document.getElementById('entry-balance-label').textContent = userBalance + ' Coins';
       const after = userBalance - t.entry_fee;
@@ -318,46 +302,22 @@
 
       const errEl = document.getElementById('entry-error');
       const btn = document.getElementById('confirm-join-btn');
-      const isJoined = t.players?.some(p => (p.user_id?.id || p.user_id) === user.id);
-
-      if (isJoined && (t.status === 'live' || t.status === 'full' || t.status === 'starting' || t.status === 'playing')) {
-        btn.textContent = '▶ Enter Arena';
-        btn.disabled = false;
-        btn.onclick = () => window.location.href = '/pages/tournament-live.html?id=' + t.id;
-        errEl.textContent = '';
-      }
-      else if (isJoined) { errEl.innerHTML = '<i class="fa-solid fa-check"></i> Already joined!'; btn.disabled = true; }
-      else if (t.status !== 'upcoming') { errEl.textContent = 'Join period closed.'; btn.disabled = true; }
-      else if (userBalance < t.entry_fee) { errEl.textContent = `Insufficient coins. Need ${t.entry_fee - userBalance} more.`; btn.disabled = true; }
-      else if (user.kyc_status !== 'verified') { errEl.textContent = 'KYC verification required.'; btn.disabled = true; }
-      else {
-        errEl.textContent = '';
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-coins"></i> Confirm Entry';
-        btn.onclick = () => confirmJoin();
-      }
+      
+      if (t.is_joined) { errEl.innerHTML = 'Already joined!'; btn.disabled = true; }
+      else if (userBalance < t.entry_fee) { errEl.textContent = 'Insufficient coins.'; btn.disabled = true; }
+      else if (user.kyc_status !== 'verified') { errEl.textContent = 'KYC required.'; btn.disabled = true; }
+      else { errEl.textContent = ''; btn.disabled = false; }
 
       document.getElementById('entry-modal').classList.add('active');
     }
 
     async function confirmJoin() {
-      if (!selectedTournament) return;
-      const btn = document.getElementById('confirm-join-btn');
-      btn.disabled = true; btn.textContent = 'Joining...';
       const res = await TournamentAPI.join(selectedTournament);
       if (res?.success) {
-        Toast.success('Joined! Entry coins deducted. Good luck! <i class="fa-solid fa-trophy"></i>');
-
-        if (currentTab === 'live') {
-          window.location.href = '/pages/tournament-live.html?id=' + selectedTournament;
-        } else {
-          document.getElementById('entry-modal').classList.remove('active');
-          loadBalance(); loadTournaments();
-        }
-      } else {
-        Toast.error(res?.message || 'Failed to join.');
-        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-coins"></i> Confirm Entry';
-      }
+        Toast.success('Joined! Good luck!');
+        document.getElementById('entry-modal').classList.remove('active');
+        loadBalance(); loadTournaments();
+      } else Toast.error(res?.message || 'Failed.');
     }
 
     function switchTab(tab, btn) {
@@ -367,21 +327,9 @@
       loadTournaments();
     }
 
-    setInterval(() => {
-      document.querySelectorAll('.card-countdown').forEach(el => {
-        const startTime = new Date(el.dataset.time);
-        const status = el.dataset.status;
-        const diff = Math.max(0, Math.floor((startTime - Date.now()) / 1000));
-        const prefix = status === 'full' ? 'Going LIVE in: ' : 'Matchmaking in: ';
-        el.textContent = `${prefix}${fmt.countdown(diff)}`;
-        if (diff === 0) loadTournaments(); 
-      });
-    }, 1000);
-
     loadBalance();
     loadTournaments();
-    setInterval(loadTournaments, 30000);
+    setInterval(loadTournaments, 10000);
   </script>
 </body>
-
 </html>
