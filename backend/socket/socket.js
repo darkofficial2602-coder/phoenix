@@ -35,6 +35,7 @@ module.exports = (io) => {
     // ─── TOURNAMENT SYNC ──────────────────────────────────
     socket.on('join_tournament', ({ tournamentId }) => {
         socket.join(`tournament_${tournamentId}`);
+        TournamentManager.broadcastState(tournamentId);
         console.log(`Socket ${socket.id} joined tournament room: ${tournamentId}`);
     });
 
