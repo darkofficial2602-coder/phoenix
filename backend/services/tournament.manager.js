@@ -39,11 +39,11 @@ class TournamentManager {
                          username: p.profiles?.username || 'Unknown',
                          rank: p.profiles?.rank || 'Bronze',
                          socketId: null,
-                         status: p.status // 'active' or 'eliminated'
+                         status: p.status || 'active' // Ensure default is active
                     }));
 
                     this.initializeActiveTournament(t.id, playersData, t);
-                    console.log(`🚀 TournamentManager picked up TR: ${t.id} (${t.status})`);
+                    console.log(`🚀 TournamentManager picked up TR: ${t.id} (${t.status}) with ${playersData.length} players`);
                 }
             }
         } catch(e) {
@@ -55,11 +55,11 @@ class TournamentManager {
         const tState = {
             id: tournamentId,
             tr_id: tData.display_id || `TR-${tournamentId.slice(0,4)}`,
-            players: playersData.filter(p => p.status === 'active'),
+            players: playersData.filter(p => (p.status || 'active') === 'active'),
             allPlayers: playersData,
             max: tData.max_players,
             timer: tData.timer_type,
-            status: tData.status.toLowerCase(), // 'full', 'live', 'starting', 'round_1', etc.
+            status: tData.status.toLowerCase(), 
             countdown: 0,
             round: tData.round || 0,
             matches: [],
@@ -73,7 +73,7 @@ class TournamentManager {
         if (tState.status === 'full') {
             tState.countdown = 2 * 60; // 2 min to LIVE
         } else if (tState.status === 'live') {
-            tState.countdown = 5 * 60; // 5 min to STARTING
+            tState.countdown = 2 * 60; // 2 min to STARTING (as requested)
         }
 
         // If it's already playing, recover matches from DB

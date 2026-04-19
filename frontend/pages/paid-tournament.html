@@ -250,7 +250,8 @@
         </div>
         <div class="players-bar"><div class="players-fill" style="width:${pct}%"></div></div>
         <div style="margin-top:12px">
-          ${isJoined ? (t.status === 'live' || t.status === 'full' || t.status === 'starting' ? '<button class="btn btn-primary btn-full btn-sm" onclick="event.stopPropagation(); window.location.href=\'/pages/tournament-live.html?id='+t.id+'\'">▶ Enter Arena</button>' : '<span class="badge badge-verified" style="width:100%;justify-content:center"><i class="fa-solid fa-check"></i> Joined</span>') :
+          ${isJoined ? (t.status === 'live' || t.status === 'full' || t.status === 'starting' || t.status === 'playing' ? '<button class="btn btn-primary btn-full btn-sm" onclick="event.stopPropagation(); window.location.href=\'/pages/tournament-live.html?id='+t.id+'\'">▶ Enter Arena</button>' : '<span class="badge badge-verified" style="width:100%;justify-content:center"><i class="fa-solid fa-check"></i> Joined</span>') :
+            (t.status === 'live' || t.status === 'full' || t.status === 'starting' || t.status === 'playing') ? '<span class="badge badge-rejected" style="width:100%;justify-content:center">Entry Closed</span>' :
             !canAfford ? '<span style="font-size:11px;color:var(--error);display:block;text-align:center"><i class="fa-solid fa-triangle-exclamation"></i> Insufficient coins</span>' :
             '<button class="btn btn-primary btn-full btn-sm">Join Tournament</button>'}
         </div>
@@ -337,13 +338,14 @@
       const btn = document.getElementById('confirm-join-btn');
       const isJoined = t.players?.some(p => (p.user_id?.id || p.user_id) === user.id);
 
-      if (isJoined && (t.status === 'live' || t.status === 'full' || t.status === 'starting')) {
+      if (isJoined && (t.status === 'live' || t.status === 'full' || t.status === 'starting' || t.status === 'playing')) {
         btn.textContent = '▶ Enter Arena';
         btn.disabled = false;
         btn.onclick = () => window.location.href = '/pages/tournament-live.html?id=' + t.id;
         errEl.textContent = '';
       }
       else if (isJoined) { errEl.innerHTML = '<i class="fa-solid fa-check"></i> Already joined!'; btn.disabled = true; }
+      else if (t.status !== 'upcoming') { errEl.textContent = 'Join period closed.'; btn.disabled = true; }
       else if (userBalance < t.entry_fee) { errEl.textContent = `Insufficient coins. Need ${t.entry_fee - userBalance} more.`; btn.disabled = true; }
       else if (user.kyc_status !== 'verified') { errEl.textContent = 'KYC verification required.'; btn.disabled = true; }
       else {
