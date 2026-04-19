@@ -42,8 +42,8 @@ class TournamentManager {
                          socketId: null // They must reconnect to update this!
                     }));
 
-                    this.startLiveTournament(t.id, playersData, t);
-                    console.log(`🚀 TournamentManager picked up Live TR: ${t.id} (${playersData.length} players)`);
+                    await this.startLiveTournament(t.id, playersData, t);
+                    console.log(`🚀 TournamentManager picked up and RECOVERED Live TR: ${t.id} (${playersData.length} players)`);
                 }
             }
         } catch(e) {
@@ -53,21 +53,19 @@ class TournamentManager {
 
     static async startLiveTournament(tournamentId, playersData, tData) {
         // format configuration
-        // tData has: timer_type (1,3,5), max_players (16,32,100), type ('paid')
-
         const tState = {
             id: tournamentId,
             tr_id: tData.tr_id,
-            players: [...playersData], // { user_id, socketId, username, rank, points }
-            allPlayers: [...playersData],
-            max: tData.max_players,
-            timer: tData.timer_type,
-            status: tData.status === 'full' ? 'FULL' : 'LIVE',
-            countdown: 2 * 60, // 2 minutes countdown in current state
-            round: 0,
-            matches: [],
-            prize_pool: tData.prize_pool || 0,
-            prize_cfg: 'top3' // Paid 1 min is always top 3
+            status: tData.status.toLowerCase(),
+            players: [...playersData], 
+            round: tData.round || 1,
+            matches: [], 
+            timer: tData.timer_type || 1,
+            max: tData.max_players || 16,
+            countdown: 2 * 60,
+            prize_first: tData.prize_first || 0,
+            prize_second: tData.prize_second || 0,
+            prize_third: tData.prize_third || 0
         };
         
         // initialize points
@@ -81,6 +79,27 @@ class TournamentManager {
             if (s) s.join(`tournament_${tournamentId}`);
           }
         });
+
+        // If it's already playing, recover matches from DB
+        if (['starting', 'playing', 'rest'].includes(tState.status)) {
+            const { data: dbMatches } = await supabase.from('matches')
+                .select('*')
+                .eq('tournament_id', tournamentId)
+                .eq('round', tState.round);
+            
+            if (dbMatches) {
+                tState.matches = dbMatches.map(m => ({
+                    id: m.id,
+                    roomId: `tr_${m.id}`,
+                    round: m.round,
+                    player1: { userId: m.white_id, username: 'Player', time: tState.timer * 60 },
+                    player2: { userId: m.black_id, username: 'Player', time: tState.timer * 60 },
+                    status: m.status,
+                    winnerId: m.winner_id,
+                    fen: m.fen || 'start'
+                }));
+            }
+        }
 
         activeTourneys.set(tournamentId, tState);
         this.broadcastState(tournamentId);
