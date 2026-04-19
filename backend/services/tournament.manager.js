@@ -307,9 +307,17 @@ class TournamentManager {
             if (s2) { s2.join(roomId); s2.join(`tournament_${tState.id}`); }
         }
 
+        console.log(`[TR-${tState.id}] Match created: ${p1.username} vs ${p2.username}. Sockets: ${sid1}, ${sid2}`);
+
         const eventData = { matchId, roomId, duration: tState.timer * 60, round: tState.round };
-        if (sid1) this.io.to(sid1).emit('match_found_tr', { ...eventData, color: 'white', opponent: p2 });
-        if (sid2) this.io.to(sid2).emit('match_found_tr', { ...eventData, color: 'black', opponent: p1 });
+        if (sid1) {
+            this.io.to(sid1).emit('match_found_tr', { ...eventData, color: 'white', opponent: p2 });
+            console.log(` -> Emitted match_found_tr to ${p1.username} (${sid1})`);
+        }
+        if (sid2) {
+            this.io.to(sid2).emit('match_found_tr', { ...eventData, color: 'black', opponent: p1 });
+            console.log(` -> Emitted match_found_tr to ${p2.username} (${sid2})`);
+        }
     }
 
     static handleMove(userId, matchId, moveSan) {

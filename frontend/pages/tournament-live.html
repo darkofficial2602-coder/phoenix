@@ -378,6 +378,12 @@
       }
 
       sock.on(`tournament_sync_${tournamentId}`, (state) => {
+        if (state.matches && !gameActive) {
+           const myMatch = state.matches.find(m => m.status === 'playing' && (m.player1.userId === user.id || m.player2.userId === user.id));
+           if (myMatch) {
+              sock.emit('rejoin_tr_match', { matchId: myMatch.id, userId: user.id });
+           }
+        }
         if (gameActive) return; // Don't disrupt active gameplay UI 
         if (state.status === 'FULL') {
           showLobby('Tournament FULL', `Starting in ${fmt.countdown(state.countdown)}`, false, false);
@@ -401,6 +407,7 @@
       });
 
       sock.on('match_found_tr', (data) => {
+        console.log('Match Found TR:', data);
         matchId = data.matchId;
         localStorage.setItem(`px_active_match_${tournamentId}`, matchId);
         setupGame(data.color, data.opponent);
