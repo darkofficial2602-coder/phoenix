@@ -18,7 +18,6 @@ class TournamentManager {
 
     static async pollLiveTournaments() {
         try {
-            // Find paid tournaments that are 'live' or 'full' (Going LIVE)
             const { data: liveTourneys } = await supabase.from('tournaments')
                 .select('*')
                 .eq('type', 'paid')
@@ -28,11 +27,28 @@ class TournamentManager {
 
             for (const t of liveTourneys) {
                 if (!activeTourneys.has(t.id)) {
-                    // Fetch players sorted by created_at to maintain "Slot" order (1-16)
-                    const { data: players } = await supabase.from('tournament_players')
+                    console.log(`🔍 Picked up TR-${t.tr_id || t.id}. Fetching players...`);
+                    
+                    let { data: players } = await supabase.from('tournament_players')
                         .select('*, profiles(username, rank)')
                         .eq('tournament_id', t.id)
                         .order('created_at', { ascending: true });
+
+                    // Retry once if 0 players (prevent race condition)
+                    if (!players || players.length === 0) {
+                        console.log(`⚠️ No players found for TR-${t.tr_id}. Retrying in 2s...`);
+                        await new Promise(r => setTimeout(r, 2000));
+                        const retry = await supabase.from('tournament_players')
+                            .select('*, profiles(username, rank)')
+                            .eq('tournament_id', t.id)
+                            .order('created_at', { ascending: true });
+                        players = retry.data;
+                    }
+                    
+                    if (!players || players.length === 0) {
+                        console.error(`❌ Still no players found for TR-${t.tr_id}. Skipping pickup.`);
+                        continue; 
+                    }
                     
                     const playersData = (players || []).map((p, index) => ({
                          user_id: p.user_id,
@@ -41,11 +57,11 @@ class TournamentManager {
                          socketId: null,
                          points: 0,
                          status: 'alive',
-                         slot: index + 1 // Assign Slot 1-16
+                         slot: index + 1
                     }));
 
+                    console.log(`✅ Loaded ${playersData.length} players for TR-${t.tr_id}. Starting manager.`);
                     this.startLiveTournament(t.id, playersData, t);
-                    console.log(`🚀 TournamentManager picked up TR-${t.tr_id || t.id}: ${t.status} (${playersData.length} players)`);
                 }
             }
         } catch(e) {
@@ -61,8 +77,8 @@ class TournamentManager {
             allPlayers: [...playersData],
             max: tData.max_players,
             timer: tData.timer_type,
-            status: tData.status === 'full' ? 'going_live' : 'starting',
-            countdown: tData.start_time ? Math.max(0, Math.floor((new Date(tData.start_time) - Date.now()) / 1000)) : (tData.status === 'full' ? 120 : 15),
+            status: 'starting',
+            countdown: tData.start_time ? Math.max(0, Math.floor((new Date(tData.start_time) - Date.now()) / 1000)) : 120,
             round: 0,
             matches: [],
             prize_pool: tData.prize_pool || 0
@@ -74,16 +90,10 @@ class TournamentManager {
 
     static tick() {
         activeTourneys.forEach((tState, tId) => {
-            if (tState.status === 'going_live' || tState.status === 'starting' || tState.status === 'rest') {
+            if (tState.status === 'starting' || tState.status === 'rest') {
                 tState.countdown--;
                 if (tState.countdown <= 0) {
-                    if (tState.status === 'going_live') {
-                        tState.status = 'starting';
-                        tState.countdown = 15;
-                        supabase.from('tournaments').update({ status: 'live' }).eq('id', tId).then(()=>{});
-                    } else {
-                        this.nextRound(tState);
-                    }
+                    this.nextRound(tState);
                 }
                 this.broadcastState(tId);
             } 
@@ -156,11 +166,17 @@ class TournamentManager {
 
         const matchId = dbMatch.id;
         const roomId = 'tr_' + matchId;
+
+        // Dynamic Socket Lookup
+        const { userToSocket } = require('../socket/socket');
+        const s1 = userToSocket.get(p1.user_id);
+        const s2 = userToSocket.get(p2.user_id);
+
         const match = {
             id: matchId, tournamentId: tState.id, roomId, status: 'playing',
             chess: new Chess(), turn: 'w',
-            player1: { userId: p1.user_id, time: tState.timer * 60, socketId: p1.socketId, score: 0 },
-            player2: { userId: p2.user_id, time: tState.timer * 60, socketId: p2.socketId, score: 0 },
+            player1: { userId: p1.user_id, time: tState.timer * 60, socketId: s1, score: 0 },
+            player2: { userId: p2.user_id, time: tState.timer * 60, socketId: s2, score: 0 },
             winnerId: null,
             fen: 'start'
         };
@@ -168,16 +184,16 @@ class TournamentManager {
         activeTournamentMatches.set(matchId, match);
         tState.matches.push(match);
 
-        [p1, p2].forEach(p => {
-            if (p.socketId) {
-                const s = this.io.sockets.sockets.get(p.socketId);
+        [ {id: s1, uid: p1.user_id}, {id: s2, uid: p2.user_id} ].forEach(p => {
+            if (p.id) {
+                const s = this.io.sockets.sockets.get(p.id);
                 if (s) { s.join(roomId); s.join(`tournament_${tState.id}`); }
             }
         });
 
         const eventData = { matchId, roomId, duration: tState.timer * 60, round: tState.round, tr_id: tState.tr_id };
-        if (p1.socketId) this.io.to(p1.socketId).emit('match_found_tr', { ...eventData, color: 'white', opponent: p2 });
-        if (p2.socketId) this.io.to(p2.socketId).emit('match_found_tr', { ...eventData, color: 'black', opponent: p1 });
+        if (s1) this.io.to(s1).emit('match_found_tr', { ...eventData, color: 'white', opponent: p2 });
+        if (s2) this.io.to(s2).emit('match_found_tr', { ...eventData, color: 'black', opponent: p1 });
     }
 
     static processRoundResults(tState) {

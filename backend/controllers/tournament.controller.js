@@ -79,9 +79,9 @@ const joinTournament = async (req, res) => {
     let updateData = { current_players: newCount };
     
     if (newCount >= tournament.max_players) {
-        newStatus = 'full';
-        updateData.status = 'full';
-        updateData.start_time = new Date(Date.now() + 120000).toISOString(); // 2 Minute Countdown starts now
+        newStatus = 'live'; // Move to LIVE immediately
+        updateData.status = 'live';
+        updateData.start_time = new Date(Date.now() + 120000).toISOString(); 
     } else {
         updateData.status = 'upcoming';
     }

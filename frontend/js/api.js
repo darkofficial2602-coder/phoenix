@@ -17,6 +17,7 @@ const fmt = {
     return `${Math.floor(s/86400)}d ago`;
   },
   countdown: (t) => {
+    if (!t || t < 0 || isNaN(t) || t > 360000) return '0:00';
     const m = Math.floor(t/60), s = t%60;
     return `${m}:${String(s).padStart(2,'0')}`;
   },
