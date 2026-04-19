@@ -92,9 +92,9 @@ const joinTournament = async (req, res) => {
     const { data: latestT } = await supabase.from('tournaments').select('current_players, max_players').eq('id', tournament.id).single();
     if (tournament.type === 'paid' && latestT && latestT.current_players >= latestT.max_players) {
         // Set start time to exactly 2 minutes from now. 
-        // The updateTournamentStatuses loop will switch it to 'live' when this time is reached.
+        // The TournamentManager will pick this up and transition state to FULL/LIVE.
         const liveTime = new Date(Date.now() + 2 * 60000).toISOString();
-        await supabase.from('tournaments').update({ start_time: liveTime }).eq('id', tournament.id);
+        await supabase.from('tournaments').update({ status: 'live', start_time: liveTime }).eq('id', tournament.id);
         
         // Notify all joined players
         const { data: players } = await supabase.from('tournament_players').select('user_id').eq('tournament_id', tournament.id);
@@ -166,7 +166,7 @@ const autoCreatePaidTournaments = async () => {
     const now = Date.now();
     const intervals = { 1: 5 * 60000, 3: 20 * 60000, 5: 30 * 60000 };
     const configs = [
-      { timer: 1, max: 16, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 500], name: '1 Min Knockout TR' },
+      { timer: 1, max: 16, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 300, 500], name: '1 Min Knockout TR' },
       { timer: 3, max: 32, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 500], name: '3 Min Knockout TR' },
       { timer: 5, max: 100, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 500], name: '5 Min Hybrid TR' }
     ];
@@ -187,9 +187,10 @@ const autoCreatePaidTournaments = async () => {
             
           if (!existing) {
              const pool = entry * conf.max;
-             const prize_first = Math.floor(pool * (conf.timer === 5 ? 0.30 : 0.35));
-             const prize_second = Math.floor(pool * (conf.timer === 5 ? 0.25 : (conf.timer === 3 ? 0.25 : 0.30)));
-             const prize_third = Math.floor(pool * (conf.timer === 5 ? 0.15 : (conf.timer === 3 ? 0.15 : 0.20)));
+             // Spec: 1st=35%, 2nd=30%, 3rd=20%. Total=85%. 15% is platform fee.
+             const prize_first = Math.floor(pool * 0.35);
+             const prize_second = Math.floor(pool * 0.30);
+             const prize_third = Math.floor(pool * 0.20);
              
              // Set start_time far into the future so it doesn't auto-start until max players hit.
              const farFuture = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();

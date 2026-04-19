@@ -56,16 +56,17 @@ class TournamentManager {
 
         const tState = {
             id: tournamentId,
+            tr_id: tData.tr_id,
             players: [...playersData], // { user_id, socketId, username, rank, points }
             allPlayers: [...playersData],
             max: tData.max_players,
             timer: tData.timer_type,
-            status: 'lobby_wait',
-            countdown: 5 * 60, // 5 minutes flat wait before tournament officially kicks off 
+            status: 'FULL',
+            countdown: 2 * 60, // 2 minutes countdown in FULL state
             round: 0,
             matches: [],
             prize_pool: tData.prize_pool || 0,
-            prize_cfg: tData.timer_type === 5 ? 'top16' : (tData.timer_type === 3 ? 'top6' : 'top3')
+            prize_cfg: 'top3' // Paid 1 min is always top 3
         };
         
         // initialize points
@@ -86,40 +87,46 @@ class TournamentManager {
 
     static tick() {
         activeTourneys.forEach((tState, tId) => {
-            if (tState.status === 'lobby_wait') {
+            if (tState.status === 'FULL') {
                 tState.countdown--;
                 if (tState.countdown <= 0) {
-                    this.transitionInitialRound(tState);
-                } else if (tState.countdown % 10 === 0 || tState.countdown <= 5) {
-                    this.broadcastState(tId);
+                    tState.status = 'LIVE';
+                    tState.countdown = 5 * 60; // 5 minutes countdown in LIVE state
+                    this.io.to(`tournament_${tId}`).emit('tournament_msg', { message: 'Tournament LIVE – Join Now' });
                 }
-            } 
+                this.broadcastState(tId);
+            }
+            else if (tState.status === 'LIVE') {
+                tState.countdown--;
+                if (tState.countdown <= 0) {
+                    tState.status = 'STARTING';
+                    this.transitionInitialRound(tState);
+                }
+                this.broadcastState(tId);
+            }
+            else if (tState.status === 'STARTING') {
+                // Short delay or transition to ROUND_1 immediately
+                tState.status = 'playing';
+                tState.round = 1;
+                this.createRoundMatches(tState).catch(console.error);
+            }
             else if (tState.status === 'playing') {
-                // If it's the hybrid 5 min qualifier (100 players) or normal bracket
-                // Match actual logic timers run locally per match in KnockoutManager.
-                // We just wait here until all active matches are finished.
                 const allDone = tState.matches.every(m => m.status === 'finished');
                 if (allDone) {
-                    if (tState.timer === 5 && tState.round === 1 && tState.max === 100) {
-                        tState.status = 'leaderboard_wait';
-                        tState.countdown = 20; // 20s leaderboard Wait
-                        this.processHybridLeaderboard(tState);
-                    } else {
-                        // Standard knockout progression
-                        tState.status = 'rest';
-                        tState.countdown = 15; // 15 seconds rest
-                        this.processKnockoutResults(tState);
-                    }
+                    tState.status = 'rest';
+                    tState.countdown = 15; // 15 seconds rest between rounds
+                    this.processKnockoutResults(tState);
                     this.broadcastState(tId);
                 }
             }
-            else if (tState.status === 'rest' || tState.status === 'leaderboard_wait') {
+            else if (tState.status === 'rest') {
                 tState.countdown--;
                 if (tState.countdown <= 0) {
                     if (tState.players.length <= 1) {
                         this.finishTournament(tId, tState);
                     } else {
                         tState.round++;
+                        tState.status = 'playing';
                         this.createRoundMatches(tState).catch(console.error);
                     }
                 } else if (tState.countdown <= 5) {
@@ -234,6 +241,7 @@ class TournamentManager {
             match_type: 'tournament',
             timer_type: tState.timer,
             tournament_id: tState.id,
+            round: tState.round,
             status: 'active',
             start_time: new Date().toISOString()
         }).select().single();
@@ -364,6 +372,25 @@ class TournamentManager {
                 }
                 const { distributeTournamentPrizes } = require('../controllers/tournament.controller');
                 await distributeTournamentPrizes(tData);
+
+                // Save Leaderboard for historical tracking
+                const { data: finalPlayers } = await supabase.from('tournament_players')
+                    .select('user_id, score')
+                    .eq('tournament_id', tId)
+                    .order('score', { ascending: false })
+                    .limit(3);
+                
+                if (finalPlayers) {
+                    const prizes = [tData.prize_first, tData.prize_second, tData.prize_third];
+                    for (let i = 0; i < finalPlayers.length; i++) {
+                        await supabase.from('tournament_leaderboard').upsert({
+                            tournament_id: tId,
+                            user_id: finalPlayers[i].user_id,
+                            rank: i + 1,
+                            prize: prizes[i] || 0
+                        });
+                    }
+                }
             }
         }
 

@@ -201,9 +201,11 @@
 
             <!-- LOBBY / SEARCH OVERLAY -->
             <div class="status-overlay" id="lobby-status">
-              <div id="status-icon" style="font-size: 60px; margin-bottom: 20px;"><i class="fa-solid fa-gamepad"></i></div>
+              <div id="status-icon" style="font-size: 60px; margin-bottom: 20px;"><i class="fa-solid fa-gamepad"></i>
+              </div>
               <h2 id="status-title" style="margin-bottom: 8px;">Entering Arena...</h2>
-              <div id="status-desc" style="color: var(--text-secondary); max-width: 300px; margin-bottom: 24px;">Please wait while we set up your match.</div>
+              <div id="status-desc" style="color: var(--text-secondary); max-width: 300px; margin-bottom: 24px;">Please
+                wait while we set up your match.</div>
               <div class="spinner" id="search-spinner"
                 style="display:none; width:30px; height:30px; border-width: 3px; margin: 0 auto; margin-bottom:20px;">
               </div>
@@ -220,7 +222,9 @@
                     <div style="font-weight:600" id="opp-name">Opponent</div>
                     <div style="font-size:11px;color:var(--text-muted)" id="opp-rating">Searching...</div>
                   </div>
-                  <div id="opp-captured" style="display:flex;align-items:center;margin-top:2px;font-size:14px;color:var(--text-secondary);min-height:16px"></div>
+                  <div id="opp-captured"
+                    style="display:flex;align-items:center;margin-top:2px;font-size:14px;color:var(--text-secondary);min-height:16px">
+                  </div>
                 </div>
                 <div class="player-timer" id="opp-timer">-:--</div>
               </div>
@@ -235,7 +239,9 @@
                     <div style="font-weight:600" id="my-name">You</div>
                     <div style="font-size:11px;color:var(--text-muted)" id="my-score">Points: 0</div>
                   </div>
-                  <div id="my-captured" style="display:flex;align-items:center;margin-top:2px;font-size:14px;color:var(--text-secondary);min-height:16px"></div>
+                  <div id="my-captured"
+                    style="display:flex;align-items:center;margin-top:2px;font-size:14px;color:var(--text-secondary);min-height:16px">
+                  </div>
                 </div>
                 <div class="player-timer" id="my-timer">-:--</div>
               </div>
@@ -250,7 +256,7 @@
     </div>
   </div>
 
-<!-- PROMOTION MODAL -->
+  <!-- PROMOTION MODAL -->
   <div id="promotion-modal" class="promotion-modal">
     <div class="promotion-content">
       <div class="promotion-title">Select Promotion Piece</div>
@@ -301,7 +307,8 @@
       if (!res?.success) return window.location.href = '/pages/free-tournament.html';
 
       tournamentConfig = res.tournament;
-      document.getElementById('tournament-name').textContent = tournamentConfig.name.toUpperCase();
+      const trIdPrefix = tournamentConfig.tr_id ? `[${tournamentConfig.tr_id}] ` : '';
+      document.getElementById('tournament-name').textContent = trIdPrefix + tournamentConfig.name.toUpperCase();
       matchTimerType = tournamentConfig.timer_type;
 
       if (tournamentConfig.status === 'completed' || tournamentConfig.status === 'cancelled') {
@@ -314,61 +321,62 @@
       renderLeaderboard(res.tournament.players || []);
 
       if (tournamentConfig.type === 'paid') {
-          isKnockout = true;
-          setupPaidTournamentLobby();
+        isKnockout = true;
+        setupPaidTournamentLobby();
       } else {
-          startSearching(); // Generic free tournament random queue
+        startSearching(); // Generic free tournament random queue
       }
     }
 
     function setupPaidTournamentLobby() {
-        // Recover match on refresh 
-        const storedMatch = localStorage.getItem(`px_active_match_${tournamentId}`);
-        if (storedMatch) {
-             sock.emit('rejoin_tr_match', { matchId: storedMatch, userId: user.id });
-        } else {
-             showLobby('Lobby Waiting Area', 'Waiting for Server. Matches start automatically.', false, false);
+      // Recover match on refresh 
+      const storedMatch = localStorage.getItem(`px_active_match_${tournamentId}`);
+      if (storedMatch) {
+        sock.emit('rejoin_tr_match', { matchId: storedMatch, userId: user.id });
+      } else {
+        showLobby('Lobby Waiting Area', 'Waiting for Server. Matches start automatically.', false, false);
+      }
+
+      sock.on(`tournament_sync_${tournamentId}`, (state) => {
+        if (gameActive) return; // Don't disrupt active gameplay UI 
+
+        if (state.status === 'FULL') {
+          showLobby('Tournament FULL', `Starting in ${fmt.countdown(state.countdown)}`, false, false);
+        } else if (state.status === 'LIVE') {
+          showLobby('Tournament LIVE', `Matchmaking starts in ${fmt.countdown(state.countdown)}`, true, false);
+        } else if (state.status === 'STARTING') {
+          showLobby('Starting Matches...', 'Preparing Round 1 brackets.', true, false);
+        } else if (state.status === 'playing') {
+          showLobby(`Round ${state.round} Ongoing`, `Matches are currently being played. Waiting for your slot or round completion.`, true, false);
+        } else if (state.status === 'rest') {
+          showLobby(`Round Finished`, `Awesome! Next round brackets generating in ${state.countdown}s`, false, false);
+        } else if (state.status === 'completed') {
+          if (globalCountdownInterval) clearInterval(globalCountdownInterval);
+          showLobby('Tournament Ended', 'All rounds completed! Checking results...', false);
+          setTimeout(() => refreshLeaderboard(), 2000);
         }
+      });
 
-        sock.on(`tournament_sync_${tournamentId}`, (state) => {
-             if (gameActive) return; // Don't disrupt active gameplay UI 
-             
-             if (state.status === 'lobby_wait') {
-                  showLobby('Tournament Begins In:', fmt.countdown(state.countdown), false, false);
-             } else if (state.status === 'playing') {
-                  showLobby(`Round ${state.round} Ongoing`, `Matches are currently being played. Waiting for your slot or round completion.`, true, false);
-             } else if (state.status === 'rest') {
-                  showLobby(`Round Finished`, `Awesome! Next round brackets generating in ${state.countdown}s`, false, false);
-             } else if (state.status === 'leaderboard_wait') {
-                  showLobby(`Qualifiers Ended`, `Calculating Top players... ${state.countdown}s`, false, false);
-                  refreshLeaderboard();
-             } else if (state.status === 'completed') {
-                  if (globalCountdownInterval) clearInterval(globalCountdownInterval);
-                  showLobby('Tournament Ended', 'All rounds completed! Checking results...', false);
-                  setTimeout(()=> refreshLeaderboard(), 2000);
-             }
-        });
-        
-        sock.on('match_found_tr', (data) => {
-             matchId = data.matchId;
-             localStorage.setItem(`px_active_match_${tournamentId}`, matchId);
-             setupGame(data.color, data.opponent);
-        });
+      sock.on('match_found_tr', (data) => {
+        matchId = data.matchId;
+        localStorage.setItem(`px_active_match_${tournamentId}`, matchId);
+        setupGame(data.color, data.opponent);
+      });
 
-        sock.on('match_rejoined', (data) => {
-             matchId = data.roomId.replace('tr_', '');
-             chess.load(data.fen);
-             setupGame(data.color, data.opponent, data.fen);
-             myTime = data.color === 'white' ? data.white_time : data.black_time;
-             oppTime = data.color === 'white' ? data.black_time : data.white_time;
-             document.getElementById('my-timer').textContent = fmt.countdown(myTime);
-             document.getElementById('opp-timer').textContent = fmt.countdown(oppTime);
-        });
+      sock.on('match_rejoined', (data) => {
+        matchId = data.roomId.replace('tr_', '');
+        chess.load(data.fen);
+        setupGame(data.color, data.opponent, data.fen);
+        myTime = data.color === 'white' ? data.white_time : data.black_time;
+        oppTime = data.color === 'white' ? data.black_time : data.white_time;
+        document.getElementById('my-timer').textContent = fmt.countdown(myTime);
+        document.getElementById('opp-timer').textContent = fmt.countdown(oppTime);
+      });
 
-        sock.on('tournament_eliminated', () => {
-             localStorage.removeItem(`px_active_match_${tournamentId}`);
-             showLobby('Eliminated 😔', 'You were knocked out. Stick around to watch the leaderboard!', false, true, 'Back to Dashboard', ()=>window.location.href='/pages/dashboard.html');
-        });
+      sock.on('tournament_eliminated', () => {
+        localStorage.removeItem(`px_active_match_${tournamentId}`);
+        showLobby('Eliminated 😔', 'You were knocked out. Stick around to watch the leaderboard!', false, true, 'Back to Dashboard', () => window.location.href = '/pages/dashboard.html');
+      });
     }
 
     function startGlobalTimer() {
@@ -384,13 +392,13 @@
           showLobby('Tournament Ended', 'Matches are stopped. Finalizing leaderboard...', false);
 
           let pInterval = setInterval(async () => {
-             const rt = await TournamentAPI.getById(tournamentId);
-             if(rt?.success && (rt.tournament.status === 'completed' || rt.tournament.status === 'cancelled')) {
-                 clearInterval(pInterval);
-                 tournamentConfig = rt.tournament;
-                 renderLeaderboard(rt.tournament.players || []);
-                 showTournamentResults(rt.tournament.players || []);
-             }
+            const rt = await TournamentAPI.getById(tournamentId);
+            if (rt?.success && (rt.tournament.status === 'completed' || rt.tournament.status === 'cancelled')) {
+              clearInterval(pInterval);
+              tournamentConfig = rt.tournament;
+              renderLeaderboard(rt.tournament.players || []);
+              showTournamentResults(rt.tournament.players || []);
+            }
           }, 3000);
         }
       }, 1000);
@@ -400,15 +408,15 @@
       const myP = players.find(p => (p.user_id?.id || p.user_id) === user.id);
       if (myP) {
         document.getElementById('my-score').textContent = `Points: ${myP.score || 0}`;
-  }
-  
-  const sorted = [...players].sort((a,b) => (b.score || 0) - (a.score || 0));
-  const html = sorted.map((p, i) => {
-    const name = p.profiles?.username || 'Player';
-    const isMe = p.user_id === user.id;
-    return `
+      }
+
+      const sorted = [...players].sort((a, b) => (b.score || 0) - (a.score || 0));
+      const html = sorted.map((p, i) => {
+        const name = p.profiles?.username || 'Player';
+        const isMe = p.user_id === user.id;
+        return `
           <div class="leaderboard-row ${isMe ? 'me' : ''}" >
-            <div class="rank-num ${i===0?'rank-1':i===1?'rank-2':i===2?'rank-3':''}">${i+1}</div>
+            <div class="rank-num ${i === 0 ? 'rank-1' : i === 1 ? 'rank-2' : i === 2 ? 'rank-3' : ''}">${i + 1}</div>
             <div class="avatar-initial" style="width:28px;height:28px;font-size:11px">${name.replace('@', '')[0].toUpperCase()}</div>
             <div style="flex:1">
               <div style="font-size:13px;font-weight:500">${name}</div>
@@ -416,321 +424,321 @@
             </div>
           </div>
     `;
-  }).join('');
-  document.getElementById('leaderboard').innerHTML = html || '<div style="padding:20px;text-align:center;font-size:12px;color:gray">No players yet.</div>';
-}
+      }).join('');
+      document.getElementById('leaderboard').innerHTML = html || '<div style="padding:20px;text-align:center;font-size:12px;color:gray">No players yet.</div>';
+    }
 
-async function refreshLeaderboard() {
-  if (!tournamentConfig) return;
-  const res = await TournamentAPI.getLeaderboard(tournamentId);
-  if (res?.success) renderLeaderboard(res.leaderboard);
-}
+    async function refreshLeaderboard() {
+      if (!tournamentConfig) return;
+      const res = await TournamentAPI.getLeaderboard(tournamentId);
+      if (res?.success) renderLeaderboard(res.leaderboard);
+    }
 
-// ─── LOBBY UI ───
-function showTournamentResults(players) {
-   document.getElementById('game-ui').style.display = 'none';
-   const overlay = document.getElementById('lobby-status');
-   overlay.classList.remove('hidden');
-   document.getElementById('search-spinner').style.display = 'none';
-   document.getElementById('action-btn').style.display = 'none';
-   
-   document.getElementById('status-title').innerHTML = '<i class="fa-solid fa-trophy" style="color:#f1c40f"></i> Tournament Completed';
-   
-   const sorted = [...players].sort((a,b) => (b.score || 0) - (a.score || 0));
-   const top3 = sorted.slice(0, 3);
-   
-   let html = `<div style="display:flex;gap:16px;justify-content:center;margin-bottom:32px;align-items:flex-end;width:100%">`;
-   
-   // 2nd Place
-   if (top3[1]) {
-       const prize = tournamentConfig.type === 'paid' && tournamentConfig.prize_second ? `<div style="color:#f1c40f;font-weight:700;margin-top:8px"><i class="fa-solid fa-coins"></i> ${tournamentConfig.prize_second}</div>` : '';
-       html += `
+    // ─── LOBBY UI ───
+    function showTournamentResults(players) {
+      document.getElementById('game-ui').style.display = 'none';
+      const overlay = document.getElementById('lobby-status');
+      overlay.classList.remove('hidden');
+      document.getElementById('search-spinner').style.display = 'none';
+      document.getElementById('action-btn').style.display = 'none';
+
+      document.getElementById('status-title').innerHTML = '<i class="fa-solid fa-trophy" style="color:#f1c40f"></i> Tournament Completed';
+
+      const sorted = [...players].sort((a, b) => (b.score || 0) - (a.score || 0));
+      const top3 = sorted.slice(0, 3);
+
+      let html = `<div style="display:flex;gap:16px;justify-content:center;margin-bottom:32px;align-items:flex-end;width:100%">`;
+
+      // 2nd Place
+      if (top3[1]) {
+        const prize = tournamentConfig.type === 'paid' && tournamentConfig.prize_second ? `<div style="color:#f1c40f;font-weight:700;margin-top:8px"><i class="fa-solid fa-coins"></i> ${tournamentConfig.prize_second}</div>` : '';
+        html += `
        <div style="background:rgba(255,255,255,0.05);padding:16px;border-radius:12px;border:2px solid silver;text-align:center;width:130px;display:flex;flex-direction:column;justify-content:center">
            <div style="font-size:32px;margin-bottom:8px">🥈</div>
            <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${top3[1].profiles?.username || 'Player'}</div>
            <div style="color:#5bc0eb;font-size:12px;margin-top:4px">${top3[1].score || 0} pts</div>
            ${prize}
        </div>`;
-   }
-   // 1st Place
-   if (top3[0]) {
-       const prize = tournamentConfig.type === 'paid' && tournamentConfig.prize_first ? `<div style="color:#f1c40f;font-weight:700;margin-top:8px"><i class="fa-solid fa-coins"></i> ${tournamentConfig.prize_first}</div>` : '';
-       html += `
+      }
+      // 1st Place
+      if (top3[0]) {
+        const prize = tournamentConfig.type === 'paid' && tournamentConfig.prize_first ? `<div style="color:#f1c40f;font-weight:700;margin-top:8px"><i class="fa-solid fa-coins"></i> ${tournamentConfig.prize_first}</div>` : '';
+        html += `
        <div style="background:rgba(255,255,255,0.08);padding:20px 16px;border-radius:12px;border:2px solid gold;text-align:center;width:150px;display:flex;flex-direction:column;justify-content:center;transform:translateY(-15px);box-shadow:0 8px 30px rgba(241,196,15,0.2)">
            <div style="font-size:40px;margin-bottom:8px">👑</div>
            <div style="font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${top3[0].profiles?.username || 'Player'}</div>
            <div style="color:#5bc0eb;font-size:13px;margin-top:4px">${top3[0].score || 0} pts</div>
            ${prize}
        </div>`;
-   }
-   // 3rd Place
-   if (top3[2]) {
-       const prize = tournamentConfig.type === 'paid' && tournamentConfig.prize_third ? `<div style="color:#f1c40f;font-weight:700;margin-top:8px"><i class="fa-solid fa-coins"></i> ${tournamentConfig.prize_third}</div>` : '';
-       html += `
+      }
+      // 3rd Place
+      if (top3[2]) {
+        const prize = tournamentConfig.type === 'paid' && tournamentConfig.prize_third ? `<div style="color:#f1c40f;font-weight:700;margin-top:8px"><i class="fa-solid fa-coins"></i> ${tournamentConfig.prize_third}</div>` : '';
+        html += `
        <div style="background:rgba(255,255,255,0.03);padding:16px;border-radius:12px;border:2px solid #cd7f32;text-align:center;width:130px;display:flex;flex-direction:column;justify-content:center">
            <div style="font-size:32px;margin-bottom:8px">🥉</div>
            <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${top3[2].profiles?.username || 'Player'}</div>
            <div style="color:#5bc0eb;font-size:12px;margin-top:4px">${top3[2].score || 0} pts</div>
            ${prize}
        </div>`;
-   }
-   
-   html += `</div>`;
-   html += `<a href="/pages/dashboard.html" class="btn btn-secondary">Return to Dashboard</a>`;
-   
-   document.getElementById('status-icon').style.display = 'none';
-   document.getElementById('status-desc').style.maxWidth = '600px';
-   document.getElementById('status-desc').innerHTML = html;
-}
+      }
 
-function showLobby(title, desc, showSearch = false, showBtn = false, btnText = 'Find Match', btnAction = startSearching) {
-  document.getElementById('game-ui').style.display = 'none';
-  const overlay = document.getElementById('lobby-status');
-  overlay.classList.remove('hidden');
-  document.getElementById('status-title').textContent = title;
-  document.getElementById('status-desc').textContent = desc;
+      html += `</div>`;
+      html += `<a href="/pages/dashboard.html" class="btn btn-secondary">Return to Dashboard</a>`;
 
-  document.getElementById('search-spinner').style.display = showSearch ? 'block' : 'none';
+      document.getElementById('status-icon').style.display = 'none';
+      document.getElementById('status-desc').style.maxWidth = '600px';
+      document.getElementById('status-desc').innerHTML = html;
+    }
 
-  const btn = document.getElementById('action-btn');
-  btn.style.display = showBtn ? 'inline-flex' : 'none';
-  if (showBtn) {
-    btn.textContent = btnText;
-    btn.onclick = btnAction;
-  }
-}
+    function showLobby(title, desc, showSearch = false, showBtn = false, btnText = 'Find Match', btnAction = startSearching) {
+      document.getElementById('game-ui').style.display = 'none';
+      const overlay = document.getElementById('lobby-status');
+      overlay.classList.remove('hidden');
+      document.getElementById('status-title').textContent = title;
+      document.getElementById('status-desc').textContent = desc;
 
-function startSearching() {
-  if (tournamentConfig.status === 'completed' || tournamentConfig.status === 'cancelled') return;
-  if (new Date(tournamentConfig.end_time).getTime() <= Date.now()) return showLobby('Tournament Ended', 'Matches are stopped. Finalizing leaderboard...', false);
-  showLobby('Searching for Match...', 'Looking for an opponent near your rank...', true, true, 'Cancel Search', cancelSearch);
-  SocketActions.findTournamentMatch(tournamentId, matchTimerType, user.id, user.username);
-}
+      document.getElementById('search-spinner').style.display = showSearch ? 'block' : 'none';
 
-function cancelSearch() {
-  SocketActions.cancelTournamentSearch(tournamentId, user.id);
-  showLobby('Ready to Play', 'Join the queue to find an opponent.', false, true, 'Find Match', startSearching);
-}
+      const btn = document.getElementById('action-btn');
+      btn.style.display = showBtn ? 'inline-flex' : 'none';
+      if (showBtn) {
+        btn.textContent = btnText;
+        btn.onclick = btnAction;
+      }
+    }
 
-// ─── GAME LOGIC ───
-function setupGame(color, opponent, fen = 'start') {
-  gameActive = true;
-  myColor = color;
-  myTime = matchTimerType * 60;
-  oppTime = matchTimerType * 60;
-  chess = new Chess();
-  if(fen !== 'start') chess.load(fen);
+    function startSearching() {
+      if (tournamentConfig.status === 'completed' || tournamentConfig.status === 'cancelled') return;
+      if (new Date(tournamentConfig.end_time).getTime() <= Date.now()) return showLobby('Tournament Ended', 'Matches are stopped. Finalizing leaderboard...', false);
+      showLobby('Searching for Match...', 'Looking for an opponent near your rank...', true, true, 'Cancel Search', cancelSearch);
+      SocketActions.findTournamentMatch(tournamentId, matchTimerType, user.id, user.username);
+    }
 
-  document.getElementById('opp-name').textContent = fmt.username(opponent.username);
-  document.getElementById('opp-avatar').textContent = opponent.username.replace('@', '')[0].toUpperCase();
-  document.getElementById('opp-rating').textContent = 'Live Knockout Match';
+    function cancelSearch() {
+      SocketActions.cancelTournamentSearch(tournamentId, user.id);
+      showLobby('Ready to Play', 'Join the queue to find an opponent.', false, true, 'Find Match', startSearching);
+    }
 
-  document.getElementById('lobby-status').classList.add('hidden');
-  document.getElementById('game-ui').style.display = 'flex';
+    // ─── GAME LOGIC ───
+    function setupGame(color, opponent, fen = 'start') {
+      gameActive = true;
+      myColor = color;
+      myTime = matchTimerType * 60;
+      oppTime = matchTimerType * 60;
+      chess = new Chess();
+      if (fen !== 'start') chess.load(fen);
 
-  if (!board) {
-    board = Chessboard('board', {
-      draggable: true,
-      position: 'start',
-      orientation: myColor,
-      pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
-      onDragStart: onDragStart,
-      onDrop: onDrop,
-      onSnapEnd: () => board.position(chess.fen())
+      document.getElementById('opp-name').textContent = fmt.username(opponent.username);
+      document.getElementById('opp-avatar').textContent = opponent.username.replace('@', '')[0].toUpperCase();
+      document.getElementById('opp-rating').textContent = 'Live Knockout Match';
+
+      document.getElementById('lobby-status').classList.add('hidden');
+      document.getElementById('game-ui').style.display = 'flex';
+
+      if (!board) {
+        board = Chessboard('board', {
+          draggable: true,
+          position: 'start',
+          orientation: myColor,
+          pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+          onDragStart: onDragStart,
+          onDrop: onDrop,
+          onSnapEnd: () => board.position(chess.fen())
+        });
+      } else {
+        board.orientation(myColor);
+        board.position('start');
+      }
+
+      startMatchTimer();
+      updatePlayerBars();
+    }
+
+    function executeMove(from, to, promotion) {
+      const move = chess.move({ from, to, promotion });
+      if (move === null) return false;
+
+      removeHighlights();
+      selectedSquare = null;
+      board.position(chess.fen());
+
+      SocketActions.makeMove(matchId, { from: move.from, to: move.to, promotion }, user.id);
+      updatePlayerBars();
+      return true;
+    }
+
+    function handlePromotion(source, target) {
+      const modal = document.getElementById('promotion-modal');
+      const options = document.getElementById('promotion-options');
+      options.innerHTML = '';
+
+      const color = chess.turn();
+      const pieces = ['q', 'r', 'b', 'n'];
+
+      pieces.forEach(p => {
+        const el = document.createElement('div');
+        el.className = 'promotion-piece';
+        // Fix: Correct casing for piece images (lowercase color, uppercase piece)
+        const pieceImg = `https://chessboardjs.com/img/chesspieces/wikipedia/${color}${p.toUpperCase()}.png`;
+        el.innerHTML = `<img src="${pieceImg}" width="45" style="cursor:pointer">`;
+        el.onclick = () => {
+          modal.style.display = 'none';
+          executeMove(source, target, p);
+        };
+        options.appendChild(el);
+      });
+
+      modal.style.display = 'flex';
+    }
+
+    function removeHighlights() { $('#board .square-55d63').removeClass('highlight-move highlight-selected'); }
+    function highlight(sq, type) { $('#board .square-' + sq).addClass('highlight-' + type); }
+
+    function onDragStart(source, piece) {
+      if (!gameActive || chess.game_over()) return false;
+
+      const myColorChar = myColor === 'white' ? 'w' : 'b';
+      const isMyPiece = piece.charAt(0) === myColorChar;
+
+      if (chess.turn() !== myColorChar || !isMyPiece) return false;
+
+      removeHighlights();
+      selectedSquare = source;
+      highlightSquare(source, 'selected');
+      const moves = chess.moves({ square: source, verbose: true });
+      moves.forEach(m => highlightSquare(m.to, 'move'));
+    }
+
+    function onDrop(source, target) {
+      if (source === target) return;
+
+      const moves = chess.moves({ square: source, verbose: true });
+      const move = moves.find(m => m.to === target);
+
+      if (!move) return 'snapback';
+
+      removeHighlights();
+      selectedSquare = null;
+
+      if (move.flags.includes('p')) {
+        handlePromotion(source, target);
+      } else {
+        executeMove(source, target, 'q');
+      }
+    }
+
+    function onSnapEnd() {
+      board.position(chess.fen());
+    }
+
+    function removeHighlights() {
+      $('#board .square-55d63').removeClass('highlight-selected highlight-move');
+    }
+
+    function highlightSquare(square, type) {
+      const $square = $('#board .square-' + square);
+      if (type === 'selected') $square.addClass('highlight-selected');
+      else $square.addClass('highlight-move');
+    }
+
+    $(document).on('mousedown touchstart', '#board .square-55d63', function () {
+      if (!gameActive || chess.game_over()) return;
+      const square = $(this).attr('data-square');
+
+      // 1. If we already have a selected piece, try to move to this square
+      if (selectedSquare && selectedSquare !== square) {
+        const moves = chess.moves({ square: selectedSquare, verbose: true });
+        const move = moves.find(m => m.to === square);
+        if (move) {
+          if (move.flags.includes('p')) handlePromotion(selectedSquare, square);
+          else executeMove(selectedSquare, square, 'q');
+          return;
+        }
+      }
+
+      // 2. Otherwise, if it's our piece, select it
+      const piece = chess.get(square);
+      const myColorChar = myColor === 'white' ? 'w' : 'b';
+      if (piece && piece.color === myColorChar) {
+        removeHighlights();
+        selectedSquare = square;
+        highlightSquare(square, 'selected');
+        const moves = chess.moves({ square: square, verbose: true });
+        moves.forEach(m => highlightSquare(m.to, 'move'));
+      } else {
+        removeHighlights();
+        selectedSquare = null;
+      }
     });
-  } else {
-    board.orientation(myColor);
-    board.position('start');
-  }
 
-  startMatchTimer();
-  updatePlayerBars();
-}
+    function updatePlayerBars() {
+      const myColorChar = myColor === 'white' ? 'w' : 'b';
+      const oppColorChar = myColor === 'white' ? 'b' : 'w';
+      const turn = chess.turn() === myColorChar;
+      document.getElementById('my-bar').classList.toggle('active', turn);
+      document.getElementById('opponent-bar').classList.toggle('active', !turn);
 
-function executeMove(from, to, promotion) {
-  const move = chess.move({ from, to, promotion });
-  if (move === null) return false;
-  
-  removeHighlights();
-  selectedSquare = null;
-  board.position(chess.fen());
-  
-  SocketActions.makeMove(matchId, { from: move.from, to: move.to, promotion }, user.id);
-  updatePlayerBars();
-  return true;
-}
+      const init = { p: 8, n: 2, b: 2, r: 2, q: 1 };
+      const cur = { w: { p: 0, n: 0, b: 0, r: 0, q: 0 }, b: { p: 0, n: 0, b: 0, r: 0, q: 0 } };
+      let wMat = 0, bMat = 0;
+      const pVals = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
-function handlePromotion(source, target) {
-  const modal = document.getElementById('promotion-modal');
-  const options = document.getElementById('promotion-options');
-  options.innerHTML = '';
-  
-  const color = chess.turn(); 
-  const pieces = ['q', 'r', 'b', 'n'];
+      chess.board().forEach(row => row.forEach(p => {
+        if (p) {
+          cur[p.color][p.type]++;
+          if (p.color === 'w') wMat += pVals[p.type]; else bMat += pVals[p.type];
+        }
+      }));
 
-  pieces.forEach(p => {
-    const el = document.createElement('div');
-    el.className = 'promotion-piece';
-    // Fix: Correct casing for piece images (lowercase color, uppercase piece)
-    const pieceImg = `https://chessboardjs.com/img/chesspieces/wikipedia/${color}${p.toUpperCase()}.png`;
-    el.innerHTML = `<img src="${pieceImg}" width="45" style="cursor:pointer">`;
-    el.onclick = () => {
-       modal.style.display = 'none';
-       executeMove(source, target, p);
-    };
-    options.appendChild(el);
-  });
-  
-  modal.style.display = 'flex';
-}
+      const myMat = myColor === 'white' ? wMat : bMat;
+      const oppMat = myColor === 'white' ? bMat : wMat;
+      const myAdv = myMat - oppMat, oppAdv = oppMat - myMat;
 
-function removeHighlights() { $('#board .square-55d63').removeClass('highlight-move highlight-selected'); }
-function highlight(sq, type) { $('#board .square-' + sq).addClass('highlight-' + type); }
+      let myCap = '', oppCap = '';
+      const pieceOrder = ['p', 'b', 'n', 'r', 'q'];
+      const pIcons = { p: 'fa-chess-pawn', n: 'fa-chess-knight', b: 'fa-chess-bishop', r: 'fa-chess-rook', q: 'fa-chess-queen' };
 
-function onDragStart(source, piece) {
-  if (!gameActive || chess.game_over()) return false;
-  
-  const myColorChar = myColor === 'white' ? 'w' : 'b';
-  const isMyPiece = piece.charAt(0) === myColorChar;
+      for (let type of pieceOrder) {
+        for (let i = 0; i < (init[type] - cur[oppColorChar][type]); i++) {
+          myCap += `<i class="fa-solid ${pIcons[type]}" style="margin-right:2px"></i>`;
+        }
+        for (let i = 0; i < (init[type] - cur[myColorChar][type]); i++) {
+          oppCap += `<i class="fa-solid ${pIcons[type]}" style="margin-right:2px"></i>`;
+        }
+      }
 
-  if (chess.turn() !== myColorChar || !isMyPiece) return false;
+      if (myAdv > 0) myCap += `<span style="font-size:11px;margin-left:4px;opacity:0.7">+${myAdv}</span>`;
+      if (oppAdv > 0) oppCap += `<span style="font-size:11px;margin-left:4px;opacity:0.7">+${oppAdv}</span>`;
 
-  removeHighlights();
-  selectedSquare = source;
-  highlightSquare(source, 'selected');
-  const moves = chess.moves({ square: source, verbose: true });
-  moves.forEach(m => highlightSquare(m.to, 'move'));
-}
-
-function onDrop(source, target) {
-  if (source === target) return;
-  
-  const moves = chess.moves({ square: source, verbose: true });
-  const move = moves.find(m => m.to === target);
-  
-  if (!move) return 'snapback';
-  
-  removeHighlights();
-  selectedSquare = null;
-  
-  if (move.flags.includes('p')) {
-     handlePromotion(source, target);
-  } else {
-     executeMove(source, target, 'q');
-  }
-}
-
-function onSnapEnd() { 
-  board.position(chess.fen()); 
-}
-
-function removeHighlights() {
-  $('#board .square-55d63').removeClass('highlight-selected highlight-move');
-}
-
-function highlightSquare(square, type) {
-  const $square = $('#board .square-' + square);
-  if (type === 'selected') $square.addClass('highlight-selected');
-  else $square.addClass('highlight-move');
-}
-
-$(document).on('mousedown touchstart', '#board .square-55d63', function() {
-  if (!gameActive || chess.game_over()) return;
-  const square = $(this).attr('data-square');
-  
-  // 1. If we already have a selected piece, try to move to this square
-  if (selectedSquare && selectedSquare !== square) {
-    const moves = chess.moves({ square: selectedSquare, verbose: true });
-    const move = moves.find(m => m.to === square);
-    if (move) {
-      if (move.flags.includes('p')) handlePromotion(selectedSquare, square);
-      else executeMove(selectedSquare, square, 'q');
-      return;
+      document.getElementById('my-captured').innerHTML = myCap;
+      document.getElementById('opp-captured').innerHTML = oppCap;
     }
-  }
 
-  // 2. Otherwise, if it's our piece, select it
-  const piece = chess.get(square);
-  const myColorChar = myColor === 'white' ? 'w' : 'b';
-  if (piece && piece.color === myColorChar) {
-    removeHighlights();
-    selectedSquare = square;
-    highlightSquare(square, 'selected');
-    const moves = chess.moves({ square: square, verbose: true });
-    moves.forEach(m => highlightSquare(m.to, 'move'));
-  } else {
-    removeHighlights();
-    selectedSquare = null;
-  }
-});
-
-function updatePlayerBars() {
-  const myColorChar = myColor === 'white' ? 'w' : 'b';
-  const oppColorChar = myColor === 'white' ? 'b' : 'w';
-  const turn = chess.turn() === myColorChar;
-  document.getElementById('my-bar').classList.toggle('active', turn);
-  document.getElementById('opponent-bar').classList.toggle('active', !turn);
-
-  const init = { p: 8, n: 2, b: 2, r: 2, q: 1 };
-  const cur = { w: { p:0, n:0, b:0, r:0, q:0 }, b: { p:0, n:0, b:0, r:0, q:0 } };
-  let wMat = 0, bMat = 0;
-  const pVals = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
-  
-  chess.board().forEach(row => row.forEach(p => { 
-    if(p) { 
-      cur[p.color][p.type]++; 
-      if(p.color === 'w') wMat += pVals[p.type]; else bMat += pVals[p.type];
-    } 
-  }));
-
-  const myMat = myColor === 'white' ? wMat : bMat;
-  const oppMat = myColor === 'white' ? bMat : wMat;
-  const myAdv = myMat - oppMat, oppAdv = oppMat - myMat;
-
-  let myCap = '', oppCap = '';
-  const pieceOrder = ['p', 'b', 'n', 'r', 'q'];
-  const pIcons = { p: 'fa-chess-pawn', n: 'fa-chess-knight', b: 'fa-chess-bishop', r: 'fa-chess-rook', q: 'fa-chess-queen' };
-
-  for(let type of pieceOrder) {
-     for(let i=0; i < (init[type] - cur[oppColorChar][type]); i++) {
-        myCap += `<i class="fa-solid ${pIcons[type]}" style="margin-right:2px"></i>`;
-     }
-     for(let i=0; i < (init[type] - cur[myColorChar][type]); i++) {
-        oppCap += `<i class="fa-solid ${pIcons[type]}" style="margin-right:2px"></i>`;
-     }
-  }
-
-  if (myAdv > 0) myCap += `<span style="font-size:11px;margin-left:4px;opacity:0.7">+${myAdv}</span>`;
-  if (oppAdv > 0) oppCap += `<span style="font-size:11px;margin-left:4px;opacity:0.7">+${oppAdv}</span>`;
-
-  document.getElementById('my-captured').innerHTML = myCap;
-  document.getElementById('opp-captured').innerHTML = oppCap;
-}
-
-function startMatchTimer() {
-  document.getElementById('my-timer').textContent = fmt.countdown(myTime);
-  document.getElementById('opp-timer').textContent = fmt.countdown(oppTime);
-  if (timerInterval) clearInterval(timerInterval);
-  timerInterval = setInterval(() => {
-    if (!gameActive) { clearInterval(timerInterval); return; }
-    if (chess.turn() === (myColor === 'white' ? 'w' : 'b')) {
-      myTime--;
+    function startMatchTimer() {
       document.getElementById('my-timer').textContent = fmt.countdown(myTime);
-    } else {
-      oppTime--;
-      document.getElementById('opp-timer').textContent = fmt.countdown(Math.max(0, oppTime));
+      document.getElementById('opp-timer').textContent = fmt.countdown(oppTime);
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        if (!gameActive) { clearInterval(timerInterval); return; }
+        if (chess.turn() === (myColor === 'white' ? 'w' : 'b')) {
+          myTime--;
+          document.getElementById('my-timer').textContent = fmt.countdown(myTime);
+        } else {
+          oppTime--;
+          document.getElementById('opp-timer').textContent = fmt.countdown(Math.max(0, oppTime));
+        }
+      }, 1000);
     }
-  }, 1000);
-}
 
-function resignGame() {
-  if (gameActive && confirm('Resign match?')) {
-    SocketActions.resign(matchId, user.id);
-  }
-}
+    function resignGame() {
+      if (gameActive && confirm('Resign match?')) {
+        SocketActions.resign(matchId, user.id);
+      }
+    }
 
-// ─── SOCKET RESPONSES ───
-sock.on('search_cancelled', () => { showLobby('Ready to Play', 'Join the queue to find an opponent.', false, true, 'Find Match', startSearching); });
+    // ─── SOCKET RESPONSES ───
+    sock.on('search_cancelled', () => { showLobby('Ready to Play', 'Join the queue to find an opponent.', false, true, 'Find Match', startSearching); });
     sock.on('tr_match_sync', (data) => {
       chess.load(data.fen);
       board.position(chess.fen());
@@ -746,83 +754,83 @@ sock.on('search_cancelled', () => { showLobby('Ready to Play', 'Join the queue t
       updateLastMoveHighlight(data.lastMove?.from, data.lastMove?.to);
       updatePlayerBars();
     });
-sock.on('match_sync', (data) => {
-  if (data.pgn) {
-    chess.load_pgn(data.pgn);
-    board.position(chess.fen());
-  } else if (data.fen) {
-    chess.load(data.fen);
-    board.position(data.fen);
-  }
+    sock.on('match_sync', (data) => {
+      if (data.pgn) {
+        chess.load_pgn(data.pgn);
+        board.position(chess.fen());
+      } else if (data.fen) {
+        chess.load(data.fen);
+        board.position(data.fen);
+      }
 
-  // Restore opponent info if it was lost/missing
-  if (data.opponent) {
-    if (!gameActive) {
-       setupGame(data.myColor, data.opponent, data.fen || 'start');
-    }
-    document.getElementById('opp-name').textContent = fmt.username(data.opponent.username);
-    document.getElementById('opp-avatar').textContent = (data.opponent.username || '?').replace('@', '')[0].toUpperCase();
-  }
+      // Restore opponent info if it was lost/missing
+      if (data.opponent) {
+        if (!gameActive) {
+          setupGame(data.myColor, data.opponent, data.fen || 'start');
+        }
+        document.getElementById('opp-name').textContent = fmt.username(data.opponent.username);
+        document.getElementById('opp-avatar').textContent = (data.opponent.username || '?').replace('@', '')[0].toUpperCase();
+      }
 
-  // Sync timers
-  myColor = data.myColor || myColor;
-  myTime = myColor === 'white' ? data.white_time : data.black_time;
-  oppTime = myColor === 'white' ? data.black_time : data.white_time;
-  document.getElementById('my-timer').textContent = fmt.countdown(myTime);
-  document.getElementById('opp-timer').textContent = fmt.countdown(Math.max(0, oppTime));
+      // Sync timers
+      myColor = data.myColor || myColor;
+      myTime = myColor === 'white' ? data.white_time : data.black_time;
+      oppTime = myColor === 'white' ? data.black_time : data.white_time;
+      document.getElementById('my-timer').textContent = fmt.countdown(myTime);
+      document.getElementById('opp-timer').textContent = fmt.countdown(Math.max(0, oppTime));
 
-  updatePlayerBars();
-});
+      updatePlayerBars();
+    });
 
-sock.on('move_made', (data) => {
-  if (data.fen) { chess.load(data.fen); board.position(data.fen); updatePlayerBars(); }
-});
-sock.on('timer_update', (data) => {
-  myTime = myColor === 'white' ? data.white_time : data.black_time;
-  oppTime = myColor === 'white' ? data.black_time : data.white_time;
-  document.getElementById('my-timer').textContent = fmt.countdown(myTime);
-  document.getElementById('opp-timer').textContent = fmt.countdown(Math.max(0, oppTime));
-});
-sock.on('game_over', (data) => {
-  gameActive = false;
-  clearInterval(timerInterval);
-  const won = data.winnerId === user.id;
-  const isDraw = data.result === 'draw';
+    sock.on('move_made', (data) => {
+      if (data.fen) { chess.load(data.fen); board.position(data.fen); updatePlayerBars(); }
+    });
+    sock.on('timer_update', (data) => {
+      myTime = myColor === 'white' ? data.white_time : data.black_time;
+      oppTime = myColor === 'white' ? data.black_time : data.white_time;
+      document.getElementById('my-timer').textContent = fmt.countdown(myTime);
+      document.getElementById('opp-timer').textContent = fmt.countdown(Math.max(0, oppTime));
+    });
+    sock.on('game_over', (data) => {
+      gameActive = false;
+      clearInterval(timerInterval);
+      const won = data.winnerId === user.id;
+      const isDraw = data.result === 'draw';
 
-  let msg = isDraw ? "Match Drawn. +10 Points" : (won ? "You Won! +15 Points" : "You Lost. -5 Points");
-  
-  if (data.reason === 'cheat_detected' && won) {
-     msg = "Opponent Banned! You Won! +15 Points";
-  }
-  
-  showLobby('Match Over', msg, false, true, 'Next Match (Auto in 3s)', startSearching);
+      let msg = isDraw ? "Match Drawn. +10 Points" : (won ? "You Won! +15 Points" : "You Lost. -5 Points");
 
-  // Auto next match in 3 seconds
-  setTimeout(() => {
-    refreshLeaderboard();
-    if (tournamentConfig.status !== 'completed') startSearching();
-  }, 3000);
-});
+      if (data.reason === 'cheat_detected' && won) {
+        msg = "Opponent Banned! You Won! +15 Points";
+      }
 
-// Periodic LB refresh
-setInterval(refreshLeaderboard, 15000);
+      showLobby('Match Over', msg, false, true, 'Next Match (Auto in 3s)', startSearching);
 
-// ─── ANTI-CHEAT DETECTION ───
-let cheatStrikes = 0;
+      // Auto next match in 3 seconds
+      setTimeout(() => {
+        refreshLeaderboard();
+        if (tournamentConfig.status !== 'completed') startSearching();
+      }, 3000);
+    });
 
-function antiCheatWarning() {
-   if (!gameActive) return;
-   let warn = document.getElementById('cheat-warn-overlay');
-   if (!warn) {
-      warn = document.createElement('div');
-      warn.id = 'cheat-warn-overlay';
-      warn.style.position = 'fixed'; warn.style.inset = '0';
-      warn.style.background = 'rgba(230, 40, 40, 0.98)';
-      warn.style.zIndex = '999999'; warn.style.display = 'flex';
-      warn.style.flexDirection = 'column'; warn.style.alignItems = 'center';
-      warn.style.justifyContent = 'center'; warn.style.color = '#fff';
-      warn.style.textAlign = 'center'; warn.style.padding = '40px';
-      warn.innerHTML = `
+    // Periodic LB refresh
+    setInterval(refreshLeaderboard, 15000);
+
+    // ─── ANTI-CHEAT DETECTION ───
+    let cheatStrikes = 0;
+
+    function antiCheatWarning() {
+      if (!gameActive) return;
+      let warn = document.getElementById('cheat-warn-overlay');
+      if (!warn) {
+        warn = document.createElement('div');
+        warn.id = 'cheat-warn-overlay';
+        warn.style.position = 'fixed'; warn.style.inset = '0';
+        warn.style.background = 'rgba(230, 40, 40, 0.98)';
+        warn.style.zIndex = '999999'; warn.style.display = 'flex';
+        warn.style.flexDirection = 'column'; warn.style.alignItems = 'center';
+        warn.style.justifyContent = 'center'; warn.style.color = '#fff';
+        warn.style.textAlign = 'center'; warn.style.padding = '40px';
+        warn.innerHTML = `
          <i class="fa-solid fa-triangle-exclamation" style="font-size:100px; margin-bottom:20px; color:#fff;"></i>
          <h1 style="font-family:var(--font-display); font-size:40px; font-weight:900; margin-bottom:10px; text-transform:uppercase;">Anti-Cheat Warning</h1>
          <p style="font-size:18px; max-width:600px; margin-bottom:30px;">
@@ -830,39 +838,40 @@ function antiCheatWarning() {
          </p>
          <button class="btn btn-secondary btn-lg" style="color:#000" onclick="document.getElementById('cheat-warn-overlay').style.display='none'">I Understand, Return to Match</button>
       `;
-      document.body.appendChild(warn);
-   }
-   warn.style.display = 'flex';
-}
+        document.body.appendChild(warn);
+      }
+      warn.style.display = 'flex';
+    }
 
-function handleCheatViolation() {
-   if (!gameActive) return;
-   cheatStrikes++;
-   if (cheatStrikes === 1) {
-      antiCheatWarning();
-   } else if (cheatStrikes >= 2) {
-      sock.emit('cheat_detected', { matchId, userId: user.id });
-      gameActive = false;
-   }
-}
+    function handleCheatViolation() {
+      if (!gameActive) return;
+      cheatStrikes++;
+      if (cheatStrikes === 1) {
+        antiCheatWarning();
+      } else if (cheatStrikes >= 2) {
+        sock.emit('cheat_detected', { matchId, userId: user.id });
+        gameActive = false;
+      }
+    }
 
-// ─── ANTI-CHEAT DETECTION (REFINED) ───
-document.addEventListener('copy', (e) => {
-   if (gameActive) {
-       e.preventDefault();
-       Toast.error("Copying game state is restricted during LIVE matches.");
-   }
-});
+    // ─── ANTI-CHEAT DETECTION (REFINED) ───
+    document.addEventListener('copy', (e) => {
+      if (gameActive) {
+        e.preventDefault();
+        Toast.error("Copying game state is restricted during LIVE matches.");
+      }
+    });
 
-document.getElementById('board').addEventListener('contextmenu', (e) => {
-   if (gameActive) e.preventDefault();
-});
+    document.getElementById('board').addEventListener('contextmenu', (e) => {
+      if (gameActive) e.preventDefault();
+    });
 
-// document.addEventListener("visibilitychange", () => {
-//    if (document.hidden && gameActive) handleCheatViolation();
-// });
+    // document.addEventListener("visibilitychange", () => {
+    //    if (document.hidden && gameActive) handleCheatViolation();
+    // });
 
-initTournament();
+    initTournament();
   </script>
 </body>
+
 </html>

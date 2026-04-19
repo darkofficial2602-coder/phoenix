@@ -446,11 +446,12 @@
           <table>
             <thead>
               <tr>
+                <th>TR ID</th>
                 <th>Tournament Name</th>
                 <th>Type / Format</th>
                 <th>Players</th>
                 <th>Status</th>
-                <th>Start Time</th>
+                <th>Time</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -1037,13 +1038,17 @@
       
       tbody.innerHTML = list.map(t => `
         <tr>
+          <td style="font-family:var(--font-display);font-size:13px;color:var(--gold)">${t.tr_id || 'N/A'}</td>
           <td><div style="font-weight:600;font-size:14px">${t.name}</div><div style="font-size:11px;color:var(--text-muted)">ID: ${t.id}</div></td>
           <td><span class="badge ${typeBadge[t.type] || 'badge-silver'}">${t.type.toUpperCase()}</span><div style="font-size:11px;margin-top:4px;color:var(--text-secondary)">${t.timer_type}m / ${t.format}</div></td>
           <td><span style="font-weight:700">${t.players_count || 0}</span> <span style="font-size:11px;color:var(--text-muted)">/ ${t.max_players}</span></td>
           <td><span class="badge ${statusBadge[t.status] || 'badge-pending'}">${t.status.toUpperCase()}</span></td>
           <td style="font-size:12px;color:var(--text-secondary)">${new Date(t.start_time).toLocaleString('en-IN')}</td>
           <td>
-            ${t.status === 'upcoming' || t.status === 'live' ? `<button class="btn-reject" onclick="cancelTournamentAdmin('${t.id}')"><i class="fa-solid fa-xmark"></i> Cancel</button>` : `<span style="font-size:11px;color:var(--text-muted)">No Actions</span>`}
+            <div class="action-btns">
+              <button class="btn-approve" onclick="viewTournamentDetails('${t.id}')"><i class="fa-solid fa-eye"></i> Details</button>
+              ${t.status === 'upcoming' || t.status === 'live' ? `<button class="btn-reject" onclick="cancelTournamentAdmin('${t.id}')"><i class="fa-solid fa-xmark"></i> Cancel</button>` : ''}
+            </div>
           </td>
         </tr>
       `).join('');
@@ -1215,6 +1220,97 @@
     
     function banPlayer(username) {
         Toast.info("Use the Users tab and search '"+username+"' to ban them.");
+    }
+
+    async function viewTournamentDetails(id) {
+      const res = await TournamentAPI.getById(id);
+      if (!res?.success) return Toast.error("Failed to load details");
+      const t = res.tournament;
+      
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay active';
+      modal.innerHTML = `
+        <div class="modal" style="max-width:800px;width:95%;max-height:90vh;overflow-y:auto;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1100">
+          <div class="flex-between mb-20">
+            <div class="modal-title" style="font-family:var(--font-display);font-weight:700">Tournament Detail: ${t.tr_id || t.id}</div>
+            <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer">&times;</button>
+          </div>
+          
+          <div class="grid-3 mb-24" style="gap:16px;display:grid;grid-template-columns:repeat(3,1fr)">
+             <div class="admin-stat">
+                <div class="stat-label">Pool</div>
+                <div class="stat-value" style="font-size:20px;color:var(--gold)">${t.prize_pool || 0}</div>
+             </div>
+             <div class="admin-stat">
+                <div class="stat-label">Players</div>
+                <div class="stat-value" style="font-size:20px">${t.current_players}/${t.max_players}</div>
+             </div>
+             <div class="admin-stat">
+                <div class="stat-label">Status</div>
+                <div class="stat-value" style="font-size:16px">${t.status.toUpperCase()}</div>
+             </div>
+          </div>
+
+          <div class="card mb-24">
+            <div class="card-title">Leaderboard (Top 3)</div>
+            <div class="table-container">
+              <table>
+                <thead><tr><th>Rank</th><th>User</th><th>Prize</th></tr></thead>
+                <tbody>
+                   ${(t.players || []).slice(0, 3).map((p, i) => `
+                     <tr>
+                       <td>${i+1}</td>
+                       <td>@${p.profiles?.username || 'Unknown'}</td>
+                       <td style="color:var(--gold)">${[t.prize_first, t.prize_second, t.prize_third][i] || 0}</td>
+                     </tr>
+                   `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Match History (Round-wise)</div>
+            <div id="admin-match-history">
+               <div class="flex-center" style="padding:20px"><div class="spinner"></div></div>
+            </div>
+          </div>
+        </div>
+        <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:1099" onclick="this.closest('.modal-overlay').remove()"></div>
+      `;
+      document.body.appendChild(modal);
+
+      // Load matches using global supabase instance (assuming it's available or use an API)
+      const { data: matches } = await supabase.from('matches')
+        .select('*, p1:profiles!player1_id(username), p2:profiles!player2_id(username)')
+        .eq('tournament_id', id)
+        .order('round', { ascending: true });
+      
+      const historyEl = document.getElementById('admin-match-history');
+      if (!matches || matches.length === 0) {
+        historyEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">No matches played yet.</div>';
+      } else {
+        const grouped = {};
+        matches.forEach(m => {
+          const r = m.round || 1;
+          if (!grouped[r]) grouped[r] = [];
+          grouped[r].push(m);
+        });
+
+        historyEl.innerHTML = Object.keys(grouped).map(round => `
+          <div style="margin-bottom:16px">
+            <div style="font-weight:700;font-size:11px;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase">Round ${round}</div>
+            <div class="grid-2" style="gap:8px;display:grid;grid-template-columns:1fr 1fr">
+              ${grouped[round].map(m => `
+                <div style="background:rgba(255,255,255,0.03);padding:8px 12px;border-radius:8px;font-size:12px" class="flex-between">
+                  <span>@${m.p1?.username || 'P1'} vs @${m.p2?.username || 'P2'}</span>
+                  <span style="color:var(--success)">${m.winner_id === m.player1_id ? 'W1' : (m.winner_id === m.player2_id ? 'W2' : 'Draw')}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('');
+      }
     }
 
     async function adminLogout() {
