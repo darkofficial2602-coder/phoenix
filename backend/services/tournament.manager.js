@@ -309,12 +309,14 @@ class TournamentManager {
         const tState = activeTourneys.get(tournamentId);
         if (!tState) return;
 
+        const tIdStr = String(tournamentId);
+
         // Emit to the specific room
-        this.io.to(`tournament_${tournamentId}`).emit(`tournament_sync_${tournamentId}`, tState);
+        this.io.to(`tournament_${tIdStr}`).emit(`tournament_sync_${tIdStr}`, tState);
         
-        // Fallback: Global broadcast for critical state changes (starting, round_start)
+        // Fallback: Global broadcast for critical state changes
         if (['starting', 'rest'].includes(tState.status)) {
-            this.io.emit(`tournament_global_sync_${tournamentId}`, tState);
+            this.io.emit(`tournament_global_sync_${tIdStr}`, tState);
         }
     }
 
