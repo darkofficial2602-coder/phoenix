@@ -3,6 +3,9 @@
   "version": "2.0.0",
   "description": "PHOENIX X Chess Platform — Supabase Edition",
   "main": "backend/server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js"
