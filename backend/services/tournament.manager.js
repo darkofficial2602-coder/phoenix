@@ -278,15 +278,23 @@ class TournamentManager {
         activeTournamentMatches.set(matchId, match);
         tState.matches.push(match);
 
-        // Put players in room
-        const s1 = this.io.sockets.sockets.get(p1.socketId);
-        const s2 = this.io.sockets.sockets.get(p2.socketId);
-        if (s1) { s1.join(roomId); s1.join(`tournament_${tState.id}`); }
-        if (s2) { s2.join(roomId); s2.join(`tournament_${tState.id}`); }
+        // Get current live sockets from the main socket registry
+        const { userToSocket } = require('../socket/socket');
+        const sid1 = userToSocket.get(p1.user_id);
+        const sid2 = userToSocket.get(p2.user_id);
+
+        if (sid1) { 
+            const s1 = this.io.sockets.sockets.get(sid1);
+            if (s1) { s1.join(roomId); s1.join(`tournament_${tState.id}`); }
+        }
+        if (sid2) {
+            const s2 = this.io.sockets.sockets.get(sid2);
+            if (s2) { s2.join(roomId); s2.join(`tournament_${tState.id}`); }
+        }
 
         const eventData = { matchId, roomId, duration: tState.timer * 60, round: tState.round };
-        this.io.to(p1.socketId).emit('match_found_tr', { ...eventData, color: 'white', opponent: p2 });
-        this.io.to(p2.socketId).emit('match_found_tr', { ...eventData, color: 'black', opponent: p1 });
+        if (sid1) this.io.to(sid1).emit('match_found_tr', { ...eventData, color: 'white', opponent: p2 });
+        if (sid2) this.io.to(sid2).emit('match_found_tr', { ...eventData, color: 'black', opponent: p1 });
     }
 
     static handleMove(userId, matchId, moveSan) {
