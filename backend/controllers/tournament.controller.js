@@ -45,6 +45,10 @@ const joinTournament = async (req, res) => {
     }
     if (tournament.current_players >= tournament.max_players) return res.status(400).json({ success: false, message: 'Tournament is full.' });
 
+    if (tournament.status !== 'upcoming') {
+        return res.status(400).json({ success: false, message: 'Tournament is already full or started.' });
+    }
+
     // Check already joined
     const { data: already } = await supabase.from('tournament_players').select('id').eq('tournament_id', req.params.id).eq('user_id', req.user.id).maybeSingle();
     if (already) return res.status(400).json({ success: false, message: 'Already joined.' });
@@ -91,16 +95,16 @@ const joinTournament = async (req, res) => {
     // PAID TOURNAMENT AUTO-LIVE TRIGGER
     const { data: latestT } = await supabase.from('tournaments').select('current_players, max_players').eq('id', tournament.id).single();
     if (tournament.type === 'paid' && latestT && latestT.current_players >= latestT.max_players) {
-        // Set start time to exactly 2 minutes from now. 
-        // The TournamentManager will pick this up and transition state to FULL/LIVE.
-        const liveTime = new Date(Date.now() + 2 * 60000).toISOString();
-        await supabase.from('tournaments').update({ status: 'live', start_time: liveTime }).eq('id', tournament.id);
+        // Set start time to exactly 2 minutes from now for FULL -> LIVE transition.
+        const startTime = new Date(Date.now() + 2 * 60000).toISOString();
+        // Update status to 'full'
+        await supabase.from('tournaments').update({ status: 'full', start_time: startTime }).eq('id', tournament.id);
         
         // Notify all joined players
         const { data: players } = await supabase.from('tournament_players').select('user_id').eq('tournament_id', tournament.id);
         if (players) {
              const notifs = players.map(p => ({
-                 user_id: p.user_id, type: 'tournament_alert', title: 'Tournament LIVE 🔥', message: `Your tournament "${tournament.name}" is going LIVE in 2 minutes! Join Now!`
+                 user_id: p.user_id, type: 'tournament_alert', title: 'Tournament FULL! 🔥', message: `Tournament "${tournament.name}" is FULL and will go LIVE in 2 minutes! Get ready!`
              }));
              await supabase.from('notifications').insert(notifs);
         }

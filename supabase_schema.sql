@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
   timer_type        INTEGER NOT NULL CHECK (timer_type IN (1,3,5,10)),
   max_players       INTEGER DEFAULT 500,
   current_players   INTEGER DEFAULT 0,
-  status            TEXT DEFAULT 'upcoming' CHECK (status IN ('upcoming','live','completed','cancelled')),
+  status            TEXT DEFAULT 'upcoming' CHECK (status IN ('upcoming','full','live','starting','completed','cancelled')),
   start_time        TIMESTAMPTZ NOT NULL,
   end_time          TIMESTAMPTZ,
   duration_minutes  INTEGER DEFAULT 30,

@@ -22,7 +22,7 @@ class TournamentManager {
             const { data: liveTourneys } = await supabase.from('tournaments')
                 .select('*')
                 .eq('type', 'paid')
-                .eq('status', 'live');
+                .in('status', ['full', 'live']);
             
             if (!liveTourneys) return;
 
@@ -61,8 +61,8 @@ class TournamentManager {
             allPlayers: [...playersData],
             max: tData.max_players,
             timer: tData.timer_type,
-            status: 'FULL',
-            countdown: 2 * 60, // 2 minutes countdown in FULL state
+            status: tData.status === 'full' ? 'FULL' : 'LIVE',
+            countdown: 2 * 60, // 2 minutes countdown in current state
             round: 0,
             matches: [],
             prize_pool: tData.prize_pool || 0,
@@ -91,8 +91,10 @@ class TournamentManager {
                 tState.countdown--;
                 if (tState.countdown <= 0) {
                     tState.status = 'LIVE';
-                    tState.countdown = 5 * 60; // 5 minutes countdown in LIVE state
-                    this.io.to(`tournament_${tId}`).emit('tournament_msg', { message: 'Tournament LIVE – Join Now' });
+                    tState.countdown = 2 * 60; // 2 minutes countdown in LIVE state
+                    // Update DB to live
+                    supabase.from('tournaments').update({ status: 'live' }).eq('id', tId).then();
+                    this.io.to(`tournament_${tId}`).emit('tournament_msg', { message: 'Tournament LIVE – Get Ready!' });
                 }
                 this.broadcastState(tId);
             }
@@ -100,6 +102,8 @@ class TournamentManager {
                 tState.countdown--;
                 if (tState.countdown <= 0) {
                     tState.status = 'STARTING';
+                    // Update DB to starting
+                    supabase.from('tournaments').update({ status: 'starting' }).eq('id', tId).then();
                     this.transitionInitialRound(tState);
                 }
                 this.broadcastState(tId);
@@ -214,6 +218,10 @@ class TournamentManager {
         tState.status = 'playing';
         tState.matches = [];
         
+        // Update DB end_time when starting rounds (assuming 4 rounds * 2 mins each = 8 mins total wait + play)
+        const endTime = new Date(Date.now() + 15 * 60000).toISOString();
+        supabase.from('tournaments').update({ end_time: endTime }).eq('id', tState.id).then();
+
         // Random pairing
         const pool = [...tState.players];
         pool.sort(() => 0.5 - Math.random());

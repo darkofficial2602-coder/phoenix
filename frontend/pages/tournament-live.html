@@ -386,7 +386,7 @@
       globalCountdownInterval = setInterval(() => {
         const diff = Math.max(0, Math.floor((end - Date.now()) / 1000));
         document.getElementById('global-timer').textContent = fmt.countdown(diff);
-        if (diff === 0) {
+        if (diff === 0 && tournamentConfig.type !== 'paid') {
           clearInterval(globalCountdownInterval);
           if (gameActive && matchId) SocketActions.resign(matchId, user.id); // Forcibly stop matches if time expires
           showLobby('Tournament Ended', 'Matches are stopped. Finalizing leaderboard...', false);
