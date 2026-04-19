@@ -26,7 +26,7 @@ const banLocks = new Set(); // Prevents anti-cheat double-confiscation race cond
 let onlineCount = 0;
 
 module.exports = (io) => {
-  TournamentManager.init(io);
+  TournamentManager.init(io, userToSocket);
 
   // Expose for updates
   io.on('connection', (socket) => {

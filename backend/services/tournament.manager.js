@@ -8,8 +8,9 @@ const activeTourneys = new Map();
 const activeTournamentMatches = new Map(); 
 
 class TournamentManager {
-    static init(io) {
+    static init(io, userToSocket) {
         this.io = io;
+        this.userToSocket = userToSocket;
         // Check every second for advancing timers and states inside activeTourneys
         setInterval(() => this.tick(), 1000);
         // Check every 10 seconds for new tournaments transitioning to live
@@ -279,9 +280,8 @@ class TournamentManager {
         tState.matches.push(match);
 
         // Get current live sockets from the main socket registry
-        const { userToSocket } = require('../socket/socket');
-        const sid1 = userToSocket.get(p1.user_id);
-        const sid2 = userToSocket.get(p2.user_id);
+        const sid1 = this.userToSocket.get(p1.user_id);
+        const sid2 = this.userToSocket.get(p2.user_id);
 
         if (sid1) { 
             const s1 = this.io.sockets.sockets.get(sid1);
@@ -417,11 +417,22 @@ class TournamentManager {
     static broadcastState(tId) {
         const tState = activeTourneys.get(tId);
         if (!tState) return;
+        
+        const syncMatches = tState.matches.map(m => ({
+            id: m.id,
+            round: m.round,
+            player1: { userId: m.player1.userId, username: m.player1.username },
+            player2: { userId: m.player2.userId, username: m.player2.username },
+            winnerId: m.winnerId,
+            status: m.status
+        }));
+
         this.io.to(`tournament_${tId}`).emit(`tournament_sync_${tId}`, {
              status: tState.status,
              countdown: tState.countdown,
              round: tState.round,
-             players_alive: tState.players.length
+             players_alive: tState.players.length,
+             matches: syncMatches
         });
     }
 

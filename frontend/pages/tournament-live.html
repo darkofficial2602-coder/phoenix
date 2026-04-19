@@ -146,21 +146,54 @@
       transform: translateY(15px);
     }
 
-    @media (max-width: 900px) {
-      .arena-layout {
-        flex-direction: column-reverse;
-        align-items: stretch;
-      }
-
-      .game-panel {
-        min-height: 350px;
-      }
-
-      .leaderboard-panel {
-        width: 100%;
-        height: 300px;
-      }
+    /* Bracket Styles */
+    .bracket-container {
+      margin-top: 32px;
+      width: 100%;
+      overflow-x: auto;
+      padding: 20px;
+      background: var(--bg-card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
     }
+    .bracket-wrapper {
+      display: flex;
+      gap: 40px;
+      min-width: max-content;
+    }
+    .bracket-round {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around;
+      gap: 20px;
+    }
+    .round-title {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .match-box {
+      width: 180px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .match-player {
+      padding: 8px 12px;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+    }
+    .match-player:last-child { border-bottom: none; }
+    .match-player.winner { color: var(--gold); font-weight: 700; background: rgba(241, 196, 15, 0.05); }
+    .match-player.loser { color: var(--text-muted); text-decoration: line-through; }
+    .score-pip { font-family: var(--font-display); color: var(--primary); }
   </style>
 </head>
 
@@ -248,6 +281,11 @@
 
               <button class="btn btn-danger btn-sm" style="margin-top:20px; align-self:flex-start;"
                 onclick="resignGame()"><i class="fa-solid fa-flag"></i> Resign Match</button>
+            </div>
+
+            <!-- TOURNAMENT BRACKET -->
+            <div id="bracket-area" class="bracket-container hidden">
+              <div class="bracket-wrapper" id="bracket-grid"></div>
             </div>
 
           </div>
@@ -350,8 +388,10 @@
           showLobby('Starting Matches...', 'Preparing Round 1 brackets.', true, false);
         } else if (state.status === 'playing') {
           showLobby(`Round ${state.round} Ongoing`, `Matches are currently being played. Waiting for your slot or round completion.`, true, false);
+          if (state.matches) renderBracket(state.matches);
         } else if (state.status === 'rest') {
           showLobby(`Round Finished`, `Awesome! Next round brackets generating in ${state.countdown}s`, false, false);
+          if (state.matches) renderBracket(state.matches);
         } else if (state.status === 'completed') {
           if (globalCountdownInterval) clearInterval(globalCountdownInterval);
           showLobby('Tournament Ended', 'All rounds completed! Checking results...', false);
@@ -431,9 +471,58 @@
     }
 
     async function refreshLeaderboard() {
-      if (!tournamentConfig) return;
-      const res = await TournamentAPI.getLeaderboard(tournamentId);
-      if (res?.success) renderLeaderboard(res.leaderboard);
+      if (!tournamentId) return;
+      const res = await TournamentAPI.getById(tournamentId);
+      if (res?.success) {
+        renderLeaderboard(res.tournament.players || []);
+        // If tournament is in rounds, show bracket
+        if (['playing', 'rest', 'completed'].includes(res.tournament.status)) {
+           // We need matches data which is handled via socket sync usually
+        }
+      }
+    }
+
+    function renderBracket(matches) {
+      const area = document.getElementById('bracket-area');
+      const grid = document.getElementById('bracket-grid');
+      area.classList.remove('hidden');
+      grid.innerHTML = '';
+
+      const rounds = {};
+      matches.forEach(m => {
+        if (!rounds[m.round]) rounds[m.round] = [];
+        rounds[m.round].push(m);
+      });
+
+      const roundNames = { 1: 'R1', 2: 'R2', 3: 'R3', 4: 'FINAL' };
+
+      Object.keys(rounds).sort((a, b) => a - b).forEach(r => {
+        const roundDiv = document.createElement('div');
+        roundDiv.className = 'bracket-round';
+        roundDiv.innerHTML = `<div class="round-title">${roundNames[r] || 'Round ' + r}</div>`;
+
+        rounds[r].forEach(m => {
+          const matchDiv = document.createElement('div');
+          matchDiv.className = 'match-box';
+          
+          const p1 = m.player1;
+          const p2 = m.player2;
+          const winnerId = m.winnerId;
+
+          matchDiv.innerHTML = `
+            <div class="match-player ${winnerId === p1.userId ? 'winner' : (winnerId && winnerId !== p1.userId ? 'loser' : '')}">
+              <span>${p1.username || 'Player'}</span>
+              <span class="score-pip">${winnerId === p1.userId ? 'W' : ''}</span>
+            </div>
+            <div class="match-player ${winnerId === p2.userId ? 'winner' : (winnerId && winnerId !== p2.userId ? 'loser' : '')}">
+              <span>${p2.username || 'Player'}</span>
+              <span class="score-pip">${winnerId === p2.userId ? 'W' : ''}</span>
+            </div>
+          `;
+          roundDiv.appendChild(matchDiv);
+        });
+        grid.appendChild(roundDiv);
+      });
     }
 
     // ─── LOBBY UI ───
