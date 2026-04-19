@@ -5,8 +5,12 @@ const getTournaments = async (req, res) => {
     const { type, status } = req.query;
     let query = supabase.from('tournaments').select('*').order('start_time', { ascending: true }).limit(100);
     if (type) query = query.eq('type', type);
-    if (status) query = query.eq('status', status);
-    else query = query.in('status', ['upcoming', 'live']);
+    if (status) {
+        if (status.includes(',')) query = query.in('status', status.split(','));
+        else query = query.eq('status', status);
+    } else {
+        query = query.in('status', ['upcoming', 'live']);
+    }
     const { data, error } = await query;
     if (error) return res.status(500).json({ success: false, message: error.message });
     res.json({ success: true, tournaments: data || [] });
