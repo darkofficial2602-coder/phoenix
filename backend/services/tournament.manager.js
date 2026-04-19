@@ -214,7 +214,8 @@ class TournamentManager {
                 .update({ score: p.score })
                 .eq('tournament_id', tState.id)
                 .eq('user_id', p.user_id)
-                .then();
+                .then()
+                .catch(err => console.error('Failed to update score in DB:', err));
         });
         
         // Wait, what if someone had a bye (no opponent)?
@@ -452,12 +453,17 @@ class TournamentManager {
     }
 
     static notifyEliminated(player, tState) {
-        const { userToSocket } = require('../socket/socket');
+        // Use the userToSocket mapping passed during init
         const sid = this.userToSocket ? this.userToSocket.get(player.user_id) : null;
         if (!sid) return;
-        this.io.to(sid).emit('tournament_eliminated', {
-            message: 'You have been eliminated.'
-        });
+        
+        try {
+            this.io.to(sid).emit('tournament_eliminated', {
+                message: 'You have been eliminated.'
+            });
+        } catch (e) {
+            console.error('Failed to emit elimination:', e);
+        }
     }
 
     static rejoinMatch(socket, matchId, userId) {
