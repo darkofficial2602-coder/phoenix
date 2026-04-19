@@ -171,16 +171,16 @@ class TournamentManager {
         const matchId = dbMatch.id;
         const roomId = 'tr_' + matchId;
 
-        // Dynamic Socket Lookup
-        const { userToSocket } = require('../socket/socket');
-        const s1 = userToSocket.get(p1.user_id);
-        const s2 = userToSocket.get(p2.user_id);
+        // Multi-Socket Lookup
+        const { userSockets } = require('../socket/socket');
+        const s1_all = userSockets.get(p1.user_id) || new Set();
+        const s2_all = userSockets.get(p2.user_id) || new Set();
 
         const match = {
             id: matchId, tournamentId: tState.id, roomId, status: 'playing',
             chess: new Chess(), turn: 'w',
-            player1: { userId: p1.user_id, time: tState.timer * 60, socketId: s1, score: 0 },
-            player2: { userId: p2.user_id, time: tState.timer * 60, socketId: s2, score: 0 },
+            player1: { userId: p1.user_id, time: tState.timer * 60, socketId: [...s1_all][0], score: 0 },
+            player2: { userId: p2.user_id, time: tState.timer * 60, socketId: [...s2_all][0], score: 0 },
             winnerId: null,
             fen: 'start'
         };
@@ -188,16 +188,19 @@ class TournamentManager {
         activeTournamentMatches.set(matchId, match);
         tState.matches.push(match);
 
-        [ {id: s1, uid: p1.user_id}, {id: s2, uid: p2.user_id} ].forEach(p => {
-            if (p.id) {
-                const s = this.io.sockets.sockets.get(p.id);
-                if (s) { s.join(roomId); s.join(`tournament_${tState.id}`); }
-            }
+        // Join all player sockets to the match room
+        s1_all.forEach(sid => {
+            const s = this.io.sockets.sockets.get(sid);
+            if (s) { s.join(roomId); s.join(`tournament_${tState.id}`); }
+        });
+        s2_all.forEach(sid => {
+            const s = this.io.sockets.sockets.get(sid);
+            if (s) { s.join(roomId); s.join(`tournament_${tState.id}`); }
         });
 
         const eventData = { matchId, roomId, duration: tState.timer * 60, round: tState.round, tr_id: tState.tr_id };
-        if (s1) this.io.to(s1).emit('match_found_tr', { ...eventData, color: 'white', opponent: p2 });
-        if (s2) this.io.to(s2).emit('match_found_tr', { ...eventData, color: 'black', opponent: p1 });
+        s1_all.forEach(sid => this.io.to(sid).emit('match_found_tr', { ...eventData, color: 'white', opponent: p2 }));
+        s2_all.forEach(sid => this.io.to(sid).emit('match_found_tr', { ...eventData, color: 'black', opponent: p1 }));
     }
 
     static processRoundResults(tState) {

@@ -325,9 +325,23 @@
              } else if (state.status === 'starting') {
                   showLobby('Preparing Matches', `Brackets are generating...`, true, false);
                   document.getElementById('status-title').innerHTML = `STARTING IN <span style="color:var(--gold)">${fmt.countdown(state.countdown)}</span>`;
-             } else if (state.status.startsWith('round_') || state.status === 'final') {
+             } else if (state.status.startsWith('round_') || state.status === 'playing') {
                   const roundLabel = state.status.replace('_', ' ').toUpperCase();
-                  showLobby(`${roundLabel} Ongoing`, `Waiting for your next pairing or round end.`, true, false);
+                  showLobby(`${roundLabel} Ongoing`, `Tournament is in progress.`, true, false);
+
+                  // Aggressive Match Detection
+                  if (state.matches && state.matches.length > 0) {
+                      const myMatch = state.matches.find(m => m.player1.userId === user.id || m.player2.userId === user.id);
+                      if (myMatch && myMatch.status === 'playing' && !gameActive) {
+                          console.log("Match detected in sync! Joining...");
+                          const color = myMatch.player1.userId === user.id ? 'white' : 'black';
+                          const oppData = color === 'white' ? state.players.find(p => p.user_id === myMatch.player2.userId) : state.players.find(p => p.user_id === myMatch.player1.userId);
+                          
+                          matchId = myMatch.id;
+                          localStorage.setItem(`px_active_match_${tournamentId}`, matchId);
+                          setupGame(color, oppData, myMatch.fen || 'start');
+                      }
+                  }
              } else if (state.status === 'rest') {
                   showLobby(`Round Finished`, `Next round brackets generating in ${state.countdown}s`, false, false);
                   refreshLeaderboard();
@@ -346,7 +360,6 @@
 
         sock.on('match_rejoined', (data) => {
              matchId = data.roomId.replace('tr_', '');
-             chess.load(data.fen);
              setupGame(data.color, data.opponent, data.fen);
              myTime = data.color === 'white' ? data.white_time : data.black_time;
              oppTime = data.color === 'white' ? data.black_time : data.white_time;
