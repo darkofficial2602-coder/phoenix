@@ -204,14 +204,31 @@
 
     let allTournaments = [];
 
+    let countdownInterval = null;
+
     async function loadTournaments() {
-      const res = await TournamentAPI.getAll('paid', currentTab === 'live' ? 'live,starting,full' : 'upcoming');
+      // UPCOMING tab shows upcoming + full. LIVE tab shows live + starting + playing.
+      const statusFilter = currentTab === 'live' ? 'live,starting,playing' : 'upcoming,full';
+      const res = await TournamentAPI.getAll('paid', statusFilter);
       if (res?.success) {
         allTournaments = res.tournaments || [];
       } else {
         allTournaments = [];
       }
       renderTournaments();
+
+      // Start global card countdown refresh
+      if (countdownInterval) clearInterval(countdownInterval);
+      countdownInterval = setInterval(() => {
+        const timers = document.querySelectorAll('.card-countdown');
+        timers.forEach(el => {
+          const end = new Date(el.dataset.time).getTime();
+          const diff = Math.max(0, Math.floor((end - Date.now()) / 1000));
+          const status = el.dataset.status;
+          const prefix = status === 'full' ? 'Going LIVE in: ' : 'Matchmaking in: ';
+          el.textContent = `${prefix}${fmt.countdown(diff)}`;
+        });
+      }, 1000);
     }
 
     function createCardHTML(t) {

@@ -150,8 +150,9 @@ class TournamentManager {
 
     static async transitionToLive(tState) {
         tState.status = 'live';
-        tState.countdown = 5 * 60;
-        await supabase.from('tournaments').update({ status: 'live' }).eq('id', tState.id);
+        tState.countdown = 2 * 60;
+        const liveStartTime = new Date(Date.now() + 2 * 60000).toISOString();
+        await supabase.from('tournaments').update({ status: 'live', start_time: liveStartTime }).eq('id', tState.id);
         this.io.to(`tournament_${tState.id}`).emit('tournament_msg', { message: 'Tournament LIVE – Get Ready!' });
         this.broadcastState(tState.id);
     }

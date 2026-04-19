@@ -322,7 +322,9 @@
              if (state.status === 'full') {
                   showLobby('Tournament FULL!', `Live countdown: ${fmt.countdown(state.countdown)}`, false, false);
              } else if (state.status === 'live') {
-                  showLobby('Live Waiting Area', `Round 1 starting in ${fmt.countdown(state.countdown)}`, false, false);
+                  // The user wants a big "Start In" timer here.
+                  showLobby('Preparing Matches', `Tournament Arena is LIVE. Round 1 starting in ${fmt.countdown(state.countdown)}`, true, false);
+                  document.getElementById('status-title').innerHTML = `STARTING IN <span style="color:var(--gold)">${fmt.countdown(state.countdown)}</span>`;
              } else if (state.status === 'starting') {
                   showLobby('Starting Soon', `Prepare for battle! Brackets are generating...`, true, false);
              } else if (state.status.startsWith('round_') || state.status === 'final') {
