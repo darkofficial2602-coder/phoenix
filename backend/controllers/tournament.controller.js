@@ -98,30 +98,20 @@ const joinTournament = async (req, res) => {
     // Trigger state transition if FULL (16/16)
     const { data: latestT } = await supabase.from('tournaments').select('current_players, max_players').eq('id', tournament.id).single();
     if (tournament.type === 'paid' && latestT && latestT.current_players >= latestT.max_players) {
-<<<<<<< HEAD
-        // Set start time to exactly 2 minutes from now for FULL -> LIVE transition.
-        const startTime = new Date(Date.now() + 2 * 60000).toISOString();
-        // Update status to 'full'
-        await supabase.from('tournaments').update({ status: 'full', start_time: startTime }).eq('id', tournament.id);
-=======
         // status=upcoming, phase=FULL
         // Start 2 min countdown to LIVE
         const liveStartTime = new Date(Date.now() + 2 * 60000).toISOString();
         await supabase.from('tournaments').update({ 
+            status: 'full',
             phase: 'full', 
             start_time: liveStartTime 
         }).eq('id', tournament.id);
->>>>>>> 726a883 (feat: upgrade paid tournament to 1-min knockout with automated lifecycle and prize distribution)
         
         // Notify
         const { data: players } = await supabase.from('tournament_players').select('user_id').eq('tournament_id', tournament.id);
         if (players) {
              const notifs = players.map(p => ({
-<<<<<<< HEAD
-                 user_id: p.user_id, type: 'tournament_alert', title: 'Tournament FULL! 🔥', message: `Tournament "${tournament.name}" is FULL and will go LIVE in 2 minutes! Get ready!`
-=======
                  user_id: p.user_id, type: 'tournament_alert', title: 'Tournament FULL! ⚡', message: `Tournament "${tournament.name}" is FULL. Going LIVE in 2 minutes!`
->>>>>>> 726a883 (feat: upgrade paid tournament to 1-min knockout with automated lifecycle and prize distribution)
              }));
              await supabase.from('notifications').insert(notifs);
         }
@@ -186,15 +176,9 @@ const autoCreatePaidTournaments = async () => {
     const now = Date.now();
     const intervals = { 1: 5 * 60000, 3: 20 * 60000, 5: 30 * 60000 };
     const configs = [
-<<<<<<< HEAD
       { timer: 1, max: 16, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 300, 500], name: '1 Min Knockout TR' },
-      { timer: 3, max: 32, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 500], name: '3 Min Knockout TR' },
-      { timer: 5, max: 100, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 500], name: '5 Min Hybrid TR' }
-=======
-      { timer: 1, max: 16, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 300, 500], name: '1 Min TR' },
-      { timer: 3, max: 32, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 300, 500], name: '3 Min TR' },
+      { timer: 3, max: 32, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 300, 500], name: '3 Min Knockout TR' },
       { timer: 5, max: 100, entries: [5, 10, 15, 20, 30, 50, 80, 100, 200, 300, 500], name: '5 Min Hybrid' }
->>>>>>> 726a883 (feat: upgrade paid tournament to 1-min knockout with automated lifecycle and prize distribution)
     ];
     
     for (const conf of configs) {
@@ -214,11 +198,7 @@ const autoCreatePaidTournaments = async () => {
              const { count } = await supabase.from('tournaments').select('*', { count: 'exact', head: true });
              const displayId = `TR-${(count || 0) + 1}`;
              const pool = entry * conf.max;
-<<<<<<< HEAD
              // Spec: 1st=35%, 2nd=30%, 3rd=20%. Total=85%. 15% is platform fee.
-=======
-             // Prize Dist: 1st=35%, 2nd=30%, 3rd=20% of TOTAL POOL (Remaining 15% is Platform Fee)
->>>>>>> 726a883 (feat: upgrade paid tournament to 1-min knockout with automated lifecycle and prize distribution)
              const prize_first = Math.floor(pool * 0.35);
              const prize_second = Math.floor(pool * 0.30);
              const prize_third = Math.floor(pool * 0.20);
