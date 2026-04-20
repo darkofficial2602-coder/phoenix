@@ -338,7 +338,7 @@
                   if (state.matches && state.matches.length > 0) {
                       const myMatch = state.matches.find(m => m.player1.userId === user.id || m.player2.userId === user.id);
                       if (myMatch) {
-                          if (myMatch.status === 'live' && !gameActive) {
+                          if ((myMatch.status === 'live' || myMatch.status === 'waiting_connect') && !gameActive) {
                               const color = myMatch.player1.userId === user.id ? 'white' : 'black';
                               const oppData = color === 'white' ? state.players.find(p => p.user_id === myMatch.player2.userId) : state.players.find(p => p.user_id === myMatch.player1.userId);
                               matchId = myMatch.id;
