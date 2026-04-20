@@ -412,12 +412,15 @@
     }
 
     function renderLeaderboard(players) {
+      if (!players || !Array.isArray(players)) return;
+      
       const myP = players.find(p => (p.user_id?.id || p.user_id) === user.id);
       if (myP) {
         document.getElementById('my-score').textContent = `Rank: ${myP.rank || '--'}`;
       }
 
-      const isCompleted = state.status === 'completed';
+      const tourneyStatus = state?.status || 'live';
+      const isCompleted = tourneyStatus === 'completed';
       const sorted = [...players]
         .sort((a, b) => {
             if (a.status === 'eliminated' && b.status !== 'eliminated' && !isCompleted) return 1;
@@ -440,10 +443,12 @@
             else { statusText = 'ELIMINATED'; statusColor = '#ff4d4d'; }
         }
 
+        const initial = (name && name.length > 0) ? name.replace('@', '')[0].toUpperCase() : '?';
+
         return `
           <div class="leaderboard-row ${isMe ? 'me' : ''} ${isEliminated ? 'eliminated' : ''}">
             <div class="rank-num">${i + 1}</div>
-            <div class="avatar-initial" style="width:28px;height:28px;font-size:11px; ${(isEliminated && !isCompleted) ? 'opacity:0.5' : ''}">${name.replace('@', '')[0].toUpperCase()}</div>
+            <div class="avatar-initial" style="width:28px;height:28px;font-size:11px; ${(isEliminated && !isCompleted) ? 'opacity:0.5' : ''}">${initial}</div>
             <div style="flex:1; ${(isEliminated && !isCompleted) ? 'opacity:0.5' : ''}">
               <div style="font-size:13px;font-weight:500">${name}</div>
               <div style="font-family:var(--font-display);font-size:11px;color:${statusColor}">${statusText}</div>
