@@ -200,6 +200,54 @@
       font-size: 14px;
       letter-spacing: 1px;
     }
+
+    /* TOURNAMENT DETAIL MODAL */
+    .tr-modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+    }
+    .tr-modal.active { display: flex; }
+    .tr-modal-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: 90%;
+      max-width: 800px;
+      max-height: 90vh;
+      overflow-y: auto;
+      position: relative;
+    }
+    .tr-modal-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      background: var(--bg-card);
+      z-index: 10;
+    }
+    .tr-modal-body { padding: 20px; }
+    .tr-section-title {
+      font-family: var(--font-display);
+      font-size: 14px;
+      color: var(--gold);
+      margin-bottom: 12px;
+      border-left: 3px solid var(--gold);
+      padding-left: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
   </style>
 </head>
 
@@ -446,8 +494,9 @@
           <table>
             <thead>
               <tr>
+                <th>TR ID</th>
                 <th>Tournament Name</th>
-                <th>Type / Format</th>
+                <th>Entry</th>
                 <th>Players</th>
                 <th>Status</th>
                 <th>Start Time</th>
@@ -649,6 +698,66 @@
       </div>
     </div>
   </div>
+
+  <!-- TOURNAMENT DETAIL MODAL -->
+  <div id="tr-detail-modal" class="tr-modal" onclick="closeTrModal()">
+    <div class="tr-modal-card" onclick="event.stopPropagation()">
+      <div class="tr-modal-header">
+        <div>
+          <div id="tr-detail-id" style="font-family:var(--font-display);color:var(--gold);font-size:12px">TR-X</div>
+          <div id="tr-detail-name" style="font-weight:700;font-size:18px">Tournament Name</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="closeTrModal()">&times;</button>
+      </div>
+      <div class="tr-modal-body">
+        <div class="grid-3 mb-24" style="gap:16px">
+          <div class="admin-stat">
+            <div class="stat-label">1st Prize</div>
+            <div id="tr-detail-p1" class="stat-value" style="font-size:18px;color:var(--gold)">0</div>
+          </div>
+          <div class="admin-stat">
+            <div class="stat-label">2nd Prize</div>
+            <div id="tr-detail-p2" class="stat-value" style="font-size:18px;color:silver">0</div>
+          </div>
+          <div class="admin-stat">
+            <div class="stat-label">3rd Prize</div>
+            <div id="tr-detail-p3" class="stat-value" style="font-size:18px;color:#cd7f32">0</div>
+          </div>
+        </div>
+
+        <div class="tr-section-title">Leaderboard (Top 16)</div>
+        <div class="table-container mb-24">
+          <table style="font-size:13px">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Player</th>
+                <th>Score</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="tr-detail-leaderboard"></tbody>
+          </table>
+        </div>
+
+        <div class="tr-section-title">Match History</div>
+        <div class="table-container">
+          <table style="font-size:13px">
+            <thead>
+              <tr>
+                <th>Round</th>
+                <th>Match</th>
+                <th>Winner</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody id="tr-detail-matches"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
 
   <div id="image-modal" class="image-modal" onclick="closeImageModal()">
     <div class="image-modal-content" onclick="event.stopPropagation()">
@@ -1029,24 +1138,88 @@
     function renderAdminTournaments(list) {
       const tbody = document.getElementById("tournaments-table");
       if(list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted)">No matching tournaments found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted)">No matching tournaments found.</td></tr>';
         return;
       }
-      const typeBadge = { "free": "badge-verified", "paid": "badge-gold" };
-      const statusBadge = { "live": "badge-live", "upcoming": "badge-pending", "completed": "badge-silver", "cancelled": "badge-rejected" };
+      const statusBadge = { "live": "badge-live", "upcoming": "badge-pending", "locked": "badge-pending", "starting": "badge-live", "playing": "badge-live", "completed": "badge-silver", "cancelled": "badge-rejected" };
       
       tbody.innerHTML = list.map(t => `
         <tr>
-          <td><div style="font-weight:600;font-size:14px">${t.display_id || ''} ${t.name}</div><div style="font-size:11px;color:var(--text-muted)">ID: ${t.id}</div></td>
-          <td><span class="badge ${typeBadge[t.type] || 'badge-silver'}">${t.type.toUpperCase()}</span><div style="font-size:11px;margin-top:4px;color:var(--text-secondary)">${t.timer_type}m / ${t.format}</div></td>
-          <td><span style="font-weight:700">${t.players_count || 0}</span> <span style="font-size:11px;color:var(--text-muted)">/ ${t.max_players}</span></td>
+          <td style="font-family:var(--font-display);font-weight:900;color:var(--gold)">${t.tr_id || 'FREE'}</td>
+          <td>
+            <div style="font-weight:600;font-size:14px">${t.name}</div>
+            <div style="font-size:11px;color:var(--text-muted)">ID: ${t.id}</div>
+          </td>
+          <td style="font-weight:700;color:var(--orange)">${t.entry_fee || 0} <i class="fa-solid fa-coins"></i></td>
+          <td><span style="font-weight:700">${t.current_players || 0}</span> <span style="font-size:11px;color:var(--text-muted)">/ ${t.max_players}</span></td>
           <td><span class="badge ${statusBadge[t.status] || 'badge-pending'}">${t.status.toUpperCase()}</span></td>
           <td style="font-size:12px;color:var(--text-secondary)">${new Date(t.start_time).toLocaleString('en-IN')}</td>
           <td>
-            ${t.status === 'upcoming' || t.status === 'live' ? `<button class="btn-reject" onclick="cancelTournamentAdmin('${t.id}')"><i class="fa-solid fa-xmark"></i> Cancel</button>` : `<span style="font-size:11px;color:var(--text-muted)">No Actions</span>`}
+            <div class="action-btns">
+              <button class="btn-approve" onclick="viewTournamentDetails('${t.id}')">Details</button>
+              ${t.status === 'upcoming' || t.status === 'locked' ? `<button class="btn-reject" onclick="cancelTournamentAdmin('${t.id}')">Cancel</button>` : ''}
+            </div>
           </td>
         </tr>
       `).join('');
+    }
+
+    async function viewTournamentDetails(id) {
+        const modal = document.getElementById('tr-detail-modal');
+        modal.classList.add('active');
+        document.getElementById('tr-detail-leaderboard').innerHTML = '<tr><td colspan="4" style="text-align:center">Loading...</td></tr>';
+        document.getElementById('tr-detail-matches').innerHTML = '<tr><td colspan="4" style="text-align:center">Loading...</td></tr>';
+
+        const res = await TournamentAPI.getById(id);
+        if (!res?.success) {
+            Toast.error("Failed to load details");
+            return;
+        }
+
+        const t = res.tournament;
+        document.getElementById('tr-detail-id').textContent = t.tr_id || 'FREE TOURNAMENT';
+        document.getElementById('tr-detail-name').textContent = t.name;
+        document.getElementById('tr-detail-p1').textContent = t.prize_first || 0;
+        document.getElementById('tr-detail-p2').textContent = t.prize_second || 0;
+        document.getElementById('tr-detail-p3').textContent = t.prize_third || 0;
+
+        // Render Leaderboard (Rankings)
+        const lbData = (t.leaderboard && t.leaderboard.length > 0) ? t.leaderboard : t.players;
+        const lbHtml = lbData.map((p, i) => {
+            const username = p.profiles?.username || p.username || 'Unknown';
+            const rank = p.rank || (i + 1);
+            const score = p.score || '-';
+            const prize = p.prize ? `<span style="color:var(--gold)">₹${p.prize}</span>` : (p.status || 'Alive');
+            return `
+                <tr>
+                    <td>${rank}</td>
+                    <td>${username}</td>
+                    <td>${score}</td>
+                    <td>${prize}</td>
+                </tr>
+            `;
+        }).join('');
+        document.getElementById('tr-detail-leaderboard').innerHTML = lbHtml || '<tr><td colspan="4" style="text-align:center">No players joined yet</td></tr>';
+
+        // Render Match History (Round-wise)
+        const mHtml = (t.matches || []).map(m => {
+            const p1 = m.p1?.username || 'P1';
+            const p2 = m.p2?.username || 'P2';
+            const winner = m.winner_id ? (m.winner_id === m.player1_id ? p1 : p2) : 'DRAW';
+            return `
+                <tr>
+                    <td>Round ${m.round || 1}</td>
+                    <td>${p1} vs ${p2}</td>
+                    <td>${winner}</td>
+                    <td>${m.status === 'finished' ? 'Completed' : (m.status || 'Ongoing')}</td>
+                </tr>
+            `;
+        }).join('');
+        document.getElementById('tr-detail-matches').innerHTML = mHtml || '<tr><td colspan="4" style="text-align:center">No matches played yet</td></tr>';
+    }
+
+    function closeTrModal() {
+        document.getElementById('tr-detail-modal').classList.remove('active');
     }
 
     async function cancelTournamentAdmin(id) {

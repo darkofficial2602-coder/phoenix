@@ -320,36 +320,33 @@
              
              // Update Global Panel Timer
              document.getElementById('global-timer').textContent = fmt.countdown(state.countdown);
-
-             if (state.status === 'going_live') {
-                  showLobby('Tournament FULL!', `Tournament is full. Preparing Arena...`, true, false);
-                  document.getElementById('status-title').innerHTML = `GOING LIVE IN <span style="color:var(--gold)">${fmt.countdown(state.countdown)}</span>`;
+             if (state.status === 'locked') {
+                  showLobby('Tournament Locked', 'All players joined. Starting soon!', true, false);
+                  document.getElementById('status-title').innerHTML = `STARTING IN: <span style="color:var(--gold)">${fmt.countdown(state.countdown)}</span>`;
              } else if (state.status === 'starting') {
-                  showLobby('Preparing Matches', `Brackets are generating...`, true, false);
-                  document.getElementById('status-title').innerHTML = `STARTING IN <span style="color:var(--gold)">${fmt.countdown(state.countdown)}</span>`;
-             } else if (state.status.startsWith('round_') || state.status === 'playing') {
-                  const roundLabel = state.status.replace('_', ' ').toUpperCase();
-                  showLobby(`${roundLabel} Ongoing`, `Tournament is in progress.`, true, false);
+                  showLobby('Generating Brackets', 'Round 1 starting...', true, false);
+                  document.getElementById('status-title').innerHTML = `STARTING: <span style="color:var(--gold)">${fmt.countdown(state.countdown)}</span>`;
+             } else if (state.status === 'playing') {
+                  const roundLabel = `ROUND ${state.round}`;
+                  showLobby(`${roundLabel} In Progress`, 'Tournament is live!', true, false);
 
-                  // Aggressive Match Detection
+                  // Match Detection
                   if (state.matches && state.matches.length > 0) {
                       const myMatch = state.matches.find(m => m.player1.userId === user.id || m.player2.userId === user.id);
                       if (myMatch && myMatch.status === 'playing' && !gameActive) {
-                          console.log("Match detected in sync! Joining...");
                           const color = myMatch.player1.userId === user.id ? 'white' : 'black';
                           const oppData = color === 'white' ? state.players.find(p => p.user_id === myMatch.player2.userId) : state.players.find(p => p.user_id === myMatch.player1.userId);
-                          
                           matchId = myMatch.id;
                           localStorage.setItem(`px_active_match_${tournamentId}`, matchId);
                           setupGame(color, oppData, myMatch.fen || 'start');
                       }
                   }
              } else if (state.status === 'rest') {
-                  showLobby(`Round Finished`, `Next round brackets generating in ${state.countdown}s`, false, false);
+                  showLobby('Round Complete', `Next round in ${state.countdown}s`, false, false);
                   refreshLeaderboard();
              } else if (state.status === 'completed') {
                   if (globalCountdownInterval) clearInterval(globalCountdownInterval);
-                  showLobby('Tournament Ended', 'All rounds completed! Checking results...', false);
+                  showLobby('Tournament Ended', 'All rounds completed!', false);
                   setTimeout(()=> refreshLeaderboard(), 2000);
              }
         });
@@ -367,6 +364,13 @@
              oppTime = data.color === 'white' ? data.black_time : data.white_time;
              document.getElementById('my-timer').textContent = fmt.countdown(myTime);
              document.getElementById('opp-timer').textContent = fmt.countdown(oppTime);
+        });
+
+        sock.on('tr_timer', (data) => {
+             document.getElementById('global-timer').textContent = fmt.countdown(data.countdown);
+             if (document.getElementById('status-title').innerHTML.includes('STARTING IN')) {
+                  document.getElementById('status-title').innerHTML = `STARTING IN: <span style="color:var(--gold)">${fmt.countdown(data.countdown)}</span>`;
+             }
         });
 
         sock.on('tournament_eliminated', () => {

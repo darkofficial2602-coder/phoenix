@@ -220,15 +220,15 @@
 
     function createCardHTML(t) {
       const isFull = t.status === 'full';
-      const isLive = t.status === 'live' || t.status === 'starting';
+      const isLocked = t.status === 'locked';
+      const isPlaying = t.status === 'playing' || t.status === 'starting';
       const isJoined = t.is_joined;
-      const canAfford = userBalance >= t.entry_fee;
       const pct = Math.round((t.current_players / t.max_players) * 100);
 
       let statusBadge = '';
-      if (isFull) statusBadge = '<span class="badge badge-pending"><i class="fa-solid fa-bolt"></i> GOING LIVE</span>';
-      else if (isLive) statusBadge = '<span class="badge badge-live"><i class="fa-solid fa-circle"></i> LIVE NOW</span>';
-      else statusBadge = '<span class="badge badge-upcoming"><i class="fa-solid fa-clock"></i> UPCOMING</span>';
+      if (t.status === 'locked') statusBadge = '<span class="badge badge-pending"><i class="fa-solid fa-lock"></i> LOCKED</span>';
+      else if (t.status === 'starting' || t.status === 'playing') statusBadge = '<span class="badge badge-live"><i class="fa-solid fa-play"></i> PLAYING</span>';
+      else statusBadge = '<span class="badge badge-upcoming">UPCOMING</span>';
 
       return `<div class="tournament-card" onclick="openEntry('${t.id}')">
         <div class="flex-between mb-12">
@@ -244,7 +244,7 @@
         <div class="players-bar"><div class="players-fill" style="width:${pct}%"></div></div>
         <div style="margin-top:12px">
             ${isJoined ? `<button class="btn btn-secondary btn-full btn-sm" onclick="event.stopPropagation(); window.location.href='/pages/tournament-live.html?id=${t.id}'">Enter Arena</button>` :
-              (isFull || isLive ? '<button class="btn btn-secondary btn-full btn-sm" disabled>Full / Live</button>' :
+              (t.status !== 'upcoming' ? `<button class="btn btn-secondary btn-full btn-sm" disabled>Locked/Playing</button>` :
               `<button class="btn btn-primary btn-full btn-sm" onclick="event.stopPropagation(); openEntry('${t.id}')">Join Tournament</button>`)
             }
         </div>

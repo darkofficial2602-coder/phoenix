@@ -380,7 +380,7 @@ module.exports = (io) => {
           if (i !== -1) tournamentQueues[tId].splice(i, 1);
         }
 
-        // Handle active game disconnect (with a 10-second grace period for page navigation)
+        // Handle active game disconnect (with a 30-second grace period for page navigation)
         for (const [matchId, game] of activeGames.entries()) {
           if (game.player1.socketId === socket.id || game.player2.socketId === socket.id) {
             const disconnectedIsP1 = game.player1.socketId === socket.id;
@@ -394,11 +394,14 @@ module.exports = (io) => {
               const result = disconnectedIsP1 ? 'player2_win' : 'player1_win';
               const winnerId = disconnectedIsP1 ? game.player2.userId : game.player1.userId;
               await endGame(io, matchId, game, result, winnerId, 'disconnect');
-            }, 30000); // 30 seconds to navigate to game.html and reconnect
+            }, 30000);
 
             break;
           }
         }
+
+        // Handle tournament match disconnect (3 sec grace)
+        TournamentManager.handleDisconnect(userData.userId);
 
         socketToUser.delete(socket.id);
         if (!userSockets.has(userData.userId) || userSockets.get(userData.userId).size === 0) {
