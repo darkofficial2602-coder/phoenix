@@ -417,7 +417,9 @@
         document.getElementById('my-score').textContent = `Rank: ${myP.rank || '--'}`;
       }
 
-      const sorted = [...players].sort((a, b) => (a.rank || 999) - (b.rank || 999));
+      const sorted = [...players]
+        .filter(p => p.status !== 'eliminated')
+        .sort((a, b) => (a.rank || 999) - (b.rank || 999));
       const html = sorted.map((p, i) => {
         const name = p.username || p.profiles?.username || 'Player';
         const isMe = (p.user_id?.id || p.user_id) === user.id;

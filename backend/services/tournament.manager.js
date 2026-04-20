@@ -335,7 +335,32 @@ class TournamentManager {
         if (!match || match.status === 'finished') return;
 
         match.status = 'finished';
+        match.result = result;
         match.winnerId = winnerId;
+
+        // Find and mark the loser as eliminated in tState
+        const { userSockets } = require('../socket/socket');
+        const tState = activeTourneys.get(match.tournamentId);
+        if (tState) {
+            const loserId = (winnerId === match.player1.userId) ? match.player2.userId : (result === 'player1_win' ? match.player2.userId : (result === 'player2_win' ? match.player1.userId : null));
+            if (loserId) {
+                const pIdx = tState.players.findIndex(p => p.user_id === loserId);
+                if (pIdx !== -1) {
+                    tState.players[pIdx].status = 'eliminated';
+                    // Notify eliminated player immediately
+                    const sockets = userSockets.get(loserId);
+                    if (sockets) {
+                        sockets.forEach(sid => {
+                            this.io.to(sid).emit('tournament_msg', { message: 'You have been eliminated.' });
+                            this.io.to(sid).emit('tournament_eliminated');
+                        });
+                    }
+                }
+            }
+            this.broadcastState(tState.id);
+        }
+
+        supabase.from('matches').update({ result, winner_id: winnerId, status: 'finished', end_time: new Date().toISOString() }).eq('id', matchId).then(()=>{});
         match.fen = match.chess.fen();
 
         const pieceValues = { p: 1, r: 2, n: 2, b: 2, q: 5 };
