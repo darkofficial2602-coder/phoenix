@@ -13,10 +13,10 @@ const getTournaments = async (req, res) => {
     
     if (status) {
         if (status === 'upcoming') query = query.eq('status', 'upcoming');
-        else if (status === 'live') query = query.in('status', ['locked', 'starting', 'playing']);
+        else if (status === 'live') query = query.in('status', ['full', 'starting', 'live']);
         else query = query.eq('status', status);
     } else {
-        query = query.in('status', ['upcoming', 'locked', 'starting', 'playing']);
+        query = query.in('status', ['upcoming', 'full', 'starting', 'live']);
     }
 
     const { data, error } = await query;
@@ -85,7 +85,7 @@ const joinTournament = async (req, res) => {
     const { count: currentCount } = await supabase.from('tournament_players').select('*', { count: 'exact', head: true }).eq('tournament_id', req.params.id);
     if (currentCount >= (tournament.max_players || 16)) {
         // Auto-lock if it somehow stayed 'upcoming'
-        await supabase.from('tournaments').update({ status: 'locked' }).eq('id', req.params.id);
+        await supabase.from('tournaments').update({ status: 'full' }).eq('id', req.params.id);
         return res.status(400).json({ success: false, message: 'Tournament is full.' });
     }
 
