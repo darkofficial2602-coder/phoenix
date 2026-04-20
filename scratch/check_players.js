@@ -5,10 +5,11 @@ const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzd
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 async function check() {
-  const { data: tourneys } = await supabase.from('tournaments').select('id, tr_id, status, current_players').eq('status', 'live');
+  const { data: tourneys } = await supabase.from('tournaments').select('*').order('created_at', { ascending: false }).limit(5);
+  if (!tourneys) return console.log('No tournaments found.');
   for (const t of tourneys) {
     const { count } = await supabase.from('tournament_players').select('*', { count: 'exact', head: true }).eq('tournament_id', t.id);
-    console.log(`TR-${t.tr_id} (ID: ${t.id}): status=${t.status}, current_players=${t.current_players}, actual_count=${count}`);
+    console.log(`TR-${t.tr_id} (ID: ${t.id}): status=${t.status}, type=${t.type}, fee=${t.entry_fee}, current=${t.current_players}, count=${count}`);
   }
 }
 check();
