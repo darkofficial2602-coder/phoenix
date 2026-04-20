@@ -412,7 +412,7 @@
     }
 
     function renderLeaderboard(players) {
-      if (!players || !Array.isArray(players)) return;
+      if (!players || !Array.isArray(players) || !user) return;
       
       const myP = players.find(p => (p.user_id?.id || p.user_id) === user.id);
       if (myP) {
