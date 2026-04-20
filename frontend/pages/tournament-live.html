@@ -321,9 +321,15 @@
              showLobby('Lobby Waiting Area', 'Tournament starts automatically when full.', false, false);
         }
 
-        sock.on(`tournament_sync_${tournamentId}`, (state) => {
+        sock.on(`tournament_sync_${tournamentId}`, (data) => {
+             state = data; // Update global state
+             
              // Update Global Panel Timer
              document.getElementById('global-timer').textContent = fmt.countdown(state.countdown);
+             
+             // Update Leaderboard
+             renderLeaderboard(state.players);
+
              if (state.status === 'full') {
                   showLobby('Tournament Locked', 'All players joined. Starting soon!', true, false);
                   document.getElementById('status-title').innerHTML = `STARTING IN: <span style="color:var(--gold)">${fmt.countdown(state.countdown)}</span>`;
