@@ -94,10 +94,15 @@ class TournamentManager {
                 this.io.to(`tournament_${tId}`).emit('tr_timer', { countdown: tState.countdown });
 
                 if (tState.countdown <= 0) {
-                    tState.status = 'starting';
-                    tState.countdown = 5;
-                    supabase.from('tournaments').update({ status: 'starting', phase: 'starting' }).eq('id', tId).then(() => {});
-                    console.log(`▶️ TR-${tState.tr_id} STARTING in 5s`);
+                    tState.status = 'live';
+                    tState.countdown = 120; // 2 min Live Lobby Wait
+                    supabase.from('tournaments').update({ status: 'live', phase: 'lobby' }).eq('id', tId).then(() => {});
+                    
+                    // TRIGGER NEXT TR NOW
+                    const { autoCreatePaidTournaments } = require('../controllers/tournament.controller');
+                    autoCreatePaidTournaments().catch(() => {});
+                    
+                    console.log(`📡 TR-${tState.tr_id} is now LIVE. Next TR triggered. Lobby wait: 120s.`);
                     this.broadcastState(tId);
                 } else if (tState.countdown % 10 === 0) {
                     this.broadcastState(tId);
@@ -113,6 +118,19 @@ class TournamentManager {
             }
             // LIVE → check all matches done
             else if (tState.status === 'live') {
+                // LIVE LOBBY WAIT (before Round 1 matches are created)
+                if (tState.matches.length === 0) {
+                    tState.countdown--;
+                    this.io.to(`tournament_${tId}`).emit('tr_timer', { countdown: tState.countdown });
+                    
+                    if (tState.countdown <= 0) {
+                        console.log(`🎮 TR-${tState.tr_id} starting matches (Round 1)`);
+                        this.nextRound(tState);
+                    }
+                    this.broadcastState(tId);
+                    return;
+                }
+
                 const allDone = tState.matches.every(m => m.status === 'finished');
                 if (allDone && tState.matches.length > 0) {
                     tState.status = 'rest';

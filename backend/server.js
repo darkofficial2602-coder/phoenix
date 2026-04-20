@@ -106,11 +106,6 @@ const { autoCreateFreeTournaments, autoCreatePaidTournaments, updateTournamentSt
 // Update tournament statuses every 30 seconds
 setInterval(updateTournamentStatuses, 30 * 1000);
 
-// Auto-create paid tournaments every minute
-setInterval(() => {
-  autoCreatePaidTournaments();
-}, 60 * 1000);
-
 // Create initial batch on startup
 setTimeout(() => {
   autoCreateFreeTournaments();

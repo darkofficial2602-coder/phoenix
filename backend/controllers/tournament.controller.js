@@ -139,9 +139,6 @@ const joinTournament = async (req, res) => {
     if (finalCount >= tournament.max_players) {
       const TournamentManager = require('../services/tournament.manager');
       TournamentManager.pickupTournament(req.params.id).catch(()=>{});
-      
-      // Auto-create replacement tournament for same entry fee
-      autoCreatePaidTournaments().catch(()=>{});
     }
 
     res.json({ success: true, message: 'Joined successfully!' });
