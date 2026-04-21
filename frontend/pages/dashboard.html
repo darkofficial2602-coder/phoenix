@@ -153,17 +153,6 @@
             </div>
           </div>
 
-          <!-- LIVE TOURNAMENTS -->
-          <div class="card" id="live-tr-section" style="display:none">
-            <div class="flex-between mb-12">
-              <div class="card-title" style="margin:0"><i class="fa-solid fa-fire" style="color:var(--orange)"></i> Live Tournaments</div>
-              <a href="/pages/paid-tournament.html" style="font-size:12px;color:var(--gold)">View All →</a>
-            </div>
-            <div id="live-tr-list" style="display:flex;flex-direction:column;gap:10px">
-              <!-- Dynamically populated -->
-            </div>
-          </div>
-
           <!-- LIVE RADAR -->
           <div class="card">
             <div class="card-title">Live Activity</div>
@@ -278,28 +267,12 @@
     async function loadDashboardData() {
       const tryLoad = async (promise) => { try { return await promise || { success: false }; } catch (e) { return { success: false }; } };
 
-      const [walletRes, statsRes, chalRes, notifRes, trRes] = await Promise.all([
+      const [walletRes, statsRes, chalRes, notifRes] = await Promise.all([
         tryLoad(WalletAPI.getBalance()),
         tryLoad(UserAPI.getStats()),
         tryLoad(FriendAPI.getChallenges()),
-        tryLoad(UserAPI.getNotifications()),
-        tryLoad(TournamentAPI.getAll('paid', 'live'))
+        tryLoad(UserAPI.getNotifications())
       ]);
-
-      if (trRes.success && trRes.tournaments.length > 0) {
-        document.getElementById('live-tr-section').style.display = 'block';
-        document.getElementById('live-tr-list').innerHTML = trRes.tournaments.slice(0, 3).map(t => `
-          <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:10px; padding:12px; display:flex; align-items:center; justify-content:space-between">
-            <div>
-              <div style="font-size:13px; font-weight:700">${t.name}</div>
-              <div style="font-size:11px; color:var(--gold); font-family:var(--font-display)">${t.prize_pool} Coins · ${t.current_players}/${t.max_players} Players</div>
-            </div>
-            <button class="btn btn-primary btn-sm" onclick="window.location.href='/pages/tournament-live.html?id=${t.id}'">${t.is_joined ? 'ENTER' : 'VIEW'}</button>
-          </div>
-        `).join('');
-      } else {
-        document.getElementById('live-tr-section').style.display = 'none';
-      }
 
       if (walletRes.success) {
         const balance = walletRes.wallet.balance;

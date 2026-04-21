@@ -12,7 +12,7 @@ const getTournaments = async (req, res) => {
     if (type) query = query.eq('type', type);
     
     if (status) {
-        if (status === 'upcoming') query = query.in('status', ['upcoming', 'full', 'starting']);
+        if (status === 'upcoming') query = query.eq('status', 'upcoming');
         else if (status === 'live') query = query.in('status', ['full', 'starting', 'live']);
         else query = query.eq('status', status);
     } else {
