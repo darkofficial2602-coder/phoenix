@@ -58,7 +58,11 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--teal-dark); border-radius: 4px; }
 
 /* LAYOUT */
-.app-layout { display: flex; min-height: 100vh; }
+.app-layout { 
+  display: block; 
+  min-height: 100vh; 
+  width: 100%;
+}
 
 /* SIDEBAR */
 .sidebar {
@@ -189,9 +193,11 @@ body {
 /* MAIN CONTENT */
 .main-content {
   margin-left: var(--sidebar-w);
-  flex: 1;
+  width: calc(100% - var(--sidebar-w));
   min-height: 100vh;
   display: flex; flex-direction: column;
+  position: relative;
+  overflow-x: hidden;
 }
 
 /* TOPBAR */
@@ -203,6 +209,7 @@ body {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 24px;
   position: sticky; top: 0; z-index: 90;
+  width: 100%;
 }
 .topbar-left { display: flex; align-items: center; gap: 16px; }
 .page-title { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--text-primary); letter-spacing: 1px; }
